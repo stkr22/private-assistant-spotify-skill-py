@@ -1,0 +1,12 @@
+# Changes here will be overwritten by Copier
+_commit: 0.1.0
+_src_path: gh:stkr22/copier-python-project
+author_email: stkr22@github.com
+author_full_name: stkr22
+copyright_license: MIT License
+project_description: This package allows to use spotify within the private assistant
+    ecosystem.
+project_name: Private Assistant Spotify Skill
+python_package_distribution_name: private-assistant-spotify-skill
+python_package_import_name: private_assistant_spotify_skill
+version: 0.1.0

@@ -1,0 +1,7 @@
+spotify_client_id: ""
+spotify_client_secret: ""
+redirect_uri: ""
+scope: "user-read-playback-state user-modify-playback-state playlist-read-private"
+db_connection_string: ""
+mqtt_server_host: ""
+mqtt_server_port: ""

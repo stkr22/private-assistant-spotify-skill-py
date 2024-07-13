@@ -1,0 +1,52 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "private-assistant-spotify-skill"
+version = "0.1.2"
+description = "This package allows to use spotify within the private assistant ecosystem."
+authors = ["stkr22 <stkr22@github.com>"]
+readme = "README.md"
+license = "MIT License"
+include = ["src"]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+spotipy = "^2.24.0"
+private-assistant-commons = "^0.1.0"
+pydantic = "^2.7.4"
+psycopg2-binary = "^2.9.9"
+sqlmodel = "^0.0.19"
+spacy = "^3.7.5"
+typer = {extras = ["all"], version = "^0.12.3"}
+en-core-web-md = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.7.1/en_core_web_md-3.7.1-py3-none-any.whl"}
+jinja2 = "^3.1.4"
+pyyaml = "^6.0.1"
+word2number = "^1.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.4.9"
+mypy = "^1.10.0"
+pytest = "^8.2.2"
+types-pyyaml = "^6.0.12.20240311"
+
+[tool.poetry.scripts]
+private-assistant-spotify-skill = "private_assistant_spotify_skill.main:app"
+
+[[tool.mypy.overrides]]
+module = [
+    "spotipy.*",
+    "word2number"
+]
+ignore_missing_imports = true
+
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+indent-width = 4
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP"]
+ignore = ["E203"]

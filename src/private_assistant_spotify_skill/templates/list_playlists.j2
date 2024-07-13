@@ -1,0 +1,4 @@
+Here are your playlists:
+{% for playlist in parameters.playlists %}
+- {{ loop.index }}: {{ playlist.name }}
+{% endfor %}

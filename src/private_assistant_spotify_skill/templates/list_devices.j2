@@ -1,0 +1,4 @@
+Here are your available devices:
+{% for device in parameters.devices %}
+- {{ loop.index }}: {{ device.name }}
+{% endfor %}
