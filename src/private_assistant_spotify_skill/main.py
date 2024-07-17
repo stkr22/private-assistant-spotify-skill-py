@@ -9,6 +9,7 @@ import paho.mqtt.client as mqtt
 import spacy
 import sqlmodel
 import typer
+from private_assistant_commons import skill_config
 from spotipy.oauth2 import SpotifyOAuth
 
 from private_assistant_spotify_skill import config, db_cache_handler, spotify_skill
@@ -27,8 +28,8 @@ app = typer.Typer()
 def start_skill(
     config_path: Annotated[pathlib.Path, typer.Argument(envvar="PRIVATE_ASSISTANT_CONFIG_PATH")],
 ):
-    config_obj = config.load_config(config_path)
-    db_engine = sqlmodel.create_engine(config_obj.db_connection_string)
+    config_obj = skill_config.load_config(config_path, config.SkillConfig)
+    db_engine = sqlmodel.create_engine(skill_config.PostgresConfig.from_env().connection_string)
     cache_handler = db_cache_handler.DBCacheHandler(db_engine)
     sp_oauth = SpotifyOAuth(
         client_id=config_obj.spotify_client_id,
