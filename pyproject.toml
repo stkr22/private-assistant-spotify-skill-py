@@ -4,12 +4,11 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "private-assistant-spotify-skill"
-version = "0.1.2"
+version = "0.1.3"
 description = "This package allows to use spotify within the private assistant ecosystem."
 authors = ["stkr22 <stkr22@github.com>"]
 readme = "README.md"
 license = "MIT License"
-include = ["src"]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
