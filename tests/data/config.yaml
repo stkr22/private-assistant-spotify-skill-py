@@ -1,0 +1,4 @@
+spotify_client_id: "dfssgrz53trgsr"
+spotify_client_secret: "dsfsat4watwa4tsgsr"
+redirect_uri: "http://localhost"
+scope: "user-read-playback-state user-modify-playback-state"

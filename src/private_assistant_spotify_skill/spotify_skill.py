@@ -6,13 +6,13 @@ import threading
 import jinja2
 import paho.mqtt.client as mqtt
 import private_assistant_commons as commons
-import spacy
 import spotipy
 import sqlalchemy
+from private_assistant_commons import messages
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from private_assistant_spotify_skill import extract_ids_from_text, models
+from private_assistant_spotify_skill import models
 
 logger = logging.getLogger(__name__)
 
@@ -44,18 +44,17 @@ class Action(enum.Enum):
 
 
 class SpotifySkill(commons.BaseSkill):
-    CACHE_REFRESH_INTERVAL = 6 * 3600  # 6 hours in seconds
+    CACHE_REFRESH_INTERVAL = 3600  # 6 hours in seconds
 
     def __init__(
         self,
         config_obj: commons.SkillConfig,
         mqtt_client: mqtt.Client,
-        nlp_model: spacy.Language,
         template_env: jinja2.Environment,
         sp_oauth: spotipy.SpotifyOAuth,
         db_engine: sqlalchemy.Engine,
     ) -> None:
-        super().__init__(config_obj, mqtt_client, nlp_model)
+        super().__init__(config_obj, mqtt_client)
         self.sp = spotipy.Spotify(auth=sp_oauth.get_access_token()["access_token"])
         self.db_engine = db_engine
 
@@ -109,20 +108,22 @@ class SpotifySkill(commons.BaseSkill):
         self._refresh_cache()
         self._schedule_cache_refresh()
 
-    def calculate_certainty(self, doc: spacy.language.Doc) -> float:
-        for token in doc:
-            if token.lemma_.lower() in ["spotify", "playlist", "playback"]:
-                return 1.0
+    def calculate_certainty(self, intent_analysis_result: messages.IntentAnalysisResult) -> float:
+        if "spotify" in intent_analysis_result.nouns:
+            return 1.0
         return 0
 
-    def find_parameters(self, action: Action, text: str) -> Parameters:
+    def find_parameters(self, action: Action, intent_analysis_result: messages.IntentAnalysisResult) -> Parameters:
         parameters = Parameters()
         parameters.playlists = self.playlists
         parameters.devices = self.devices
         if action == Action.PLAY_PLAYLIST:
-            found_objects = extract_ids_from_text.extract_ids_from_text(text=text, nlp_model=self.nlp_model)
-            parameters.playlist_id = found_objects.get("playlist")
-            parameters.device_id = found_objects.get("device")
+            for result in intent_analysis_result.numbers:
+                if result.previous_token:
+                    if "playlist" in result.previous_token:
+                        parameters.playlist_id = result.number_token
+                    if "device" in result.previous_token:
+                        parameters.device_id = result.number_token
         return parameters
 
     def get_device_id_by_index(self, index: int, devices: list[models.Device]) -> str | None:
@@ -155,19 +156,19 @@ class SpotifySkill(commons.BaseSkill):
         )
         return answer
 
-    def process_request(self, client_request: commons.ClientRequest) -> None:
-        action = Action.find_matching_action(client_request.text)
+    def process_request(self, intent_analysis_result: messages.IntentAnalysisResult) -> None:
+        action = Action.find_matching_action(intent_analysis_result.client_request.text)
         parameters = None
         if action is not None:
-            parameters = self.find_parameters(action, text=client_request.text)
+            parameters = self.find_parameters(action, intent_analysis_result=intent_analysis_result)
         if parameters is not None and action is not None:
             answer = self.get_answer(action, parameters)
-            self.add_text_to_output_topic(answer, client_request=client_request)
+            self.add_text_to_output_topic(answer, client_request=intent_analysis_result.client_request)
             if action == Action.PLAY_PLAYLIST:
                 if parameters.device_id:
                     device_spotify_id = self.get_device_id_by_index(parameters.device_id, parameters.devices)
                 else:
-                    device_spotify_id = self.get_main_device_id(client_request.room)
+                    device_spotify_id = self.get_main_device_id(intent_analysis_result.client_request.room)
                 if parameters.playlist_id and device_spotify_id:
                     playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
                     if playlist_id:
