@@ -6,7 +6,6 @@ from typing import Annotated
 
 import jinja2
 import paho.mqtt.client as mqtt
-import spacy
 import sqlmodel
 import typer
 from private_assistant_commons import skill_config
@@ -45,7 +44,6 @@ def start_skill(
             protocol=mqtt.MQTTv5,
         ),
         config_obj=config_obj,
-        nlp_model=spacy.load(config_obj.spacy_model),
         template_env=jinja2.Environment(
             loader=jinja2.PackageLoader(
                 "private_assistant_spotify_skill",
