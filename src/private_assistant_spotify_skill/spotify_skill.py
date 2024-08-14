@@ -45,7 +45,7 @@ class Action(enum.Enum):
 
 
 class SpotifySkill(commons.BaseSkill):
-    CACHE_REFRESH_INTERVAL = 3600  # 6 hours in seconds
+    CACHE_REFRESH_INTERVAL = 3600  # 1 hour in seconds
 
     def __init__(
         self,
@@ -56,7 +56,7 @@ class SpotifySkill(commons.BaseSkill):
         db_engine: sqlalchemy.Engine,
     ) -> None:
         super().__init__(config_obj, mqtt_client)
-        self.sp = spotipy.Spotify(auth=sp_oauth.get_access_token()["access_token"])
+        self.sp = spotipy.Spotify(auth_manager=sp_oauth)
         self.db_engine = db_engine
 
         self.action_to_answer: dict[Action, jinja2.Template] = {
