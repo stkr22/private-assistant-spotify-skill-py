@@ -158,11 +158,11 @@ class SpotifySkill(commons.BaseSkill):
         return answer
 
     def start_spotify_playlist(self, device_spotify: models.Device, playlist_id: str) -> None:
-        self.sp.start_playback(device_id=device_spotify.id, context_uri=f"spotify:playlist:{playlist_id}")
-        self.sp.volume(volume_percent=55, device_id=device_spotify.id)
+        self.sp.start_playback(device_id=device_spotify.spotify_id, context_uri=f"spotify:playlist:{playlist_id}")
+        self.sp.volume(volume_percent=55, device_id=device_spotify.spotify_id)
         if device_spotify.ip:
             pyamaha.Device(device_spotify.ip).get(pyamaha.Zone.set_sound_program("main", program="music"))
-        self.sp.shuffle(state=True, device_id=device_spotify.id)
+        self.sp.shuffle(state=True, device_id=device_spotify.spotify_id)
 
     def process_request(self, intent_analysis_result: messages.IntentAnalysisResult) -> None:
         action = Action.find_matching_action(intent_analysis_result.client_request.text)
