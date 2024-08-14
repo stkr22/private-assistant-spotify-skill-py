@@ -6,6 +6,7 @@ import threading
 import jinja2
 import paho.mqtt.client as mqtt
 import private_assistant_commons as commons
+import pyamaha
 import spotipy
 import sqlalchemy
 from private_assistant_commons import messages
@@ -126,9 +127,9 @@ class SpotifySkill(commons.BaseSkill):
                         parameters.device_id = result.number_token
         return parameters
 
-    def get_device_id_by_index(self, index: int, devices: list[models.Device]) -> str | None:
+    def get_device_id_by_index(self, index: int, devices: list[models.Device]) -> models.Device | None:
         try:
-            return devices[index - 1].spotify_id
+            return devices[index - 1]
         except IndexError:
             logger.error("Invalid device index.")
             return None
@@ -140,13 +141,13 @@ class SpotifySkill(commons.BaseSkill):
             logger.error("Invalid playlist index.")
             return None
 
-    def get_main_device_id(self, room: str) -> str | None:
+    def get_main_device_id(self, room: str) -> models.Device | None:
         with Session(self.db_engine) as session:
             main_device = session.exec(
                 select(models.Device).where(models.Device.room == room, models.Device.is_main.__eq__(True))
             ).first()
             if main_device:
-                return main_device.spotify_id
+                return main_device
         return None
 
     def get_answer(self, action: Action, parameters: Parameters) -> str:
@@ -155,6 +156,13 @@ class SpotifySkill(commons.BaseSkill):
             parameters=parameters,
         )
         return answer
+
+    def start_spotify_playlist(self, device_spotify: models.Device, playlist_id: str) -> None:
+        self.sp.start_playback(device_id=device_spotify.id, context_uri=f"spotify:playlist:{playlist_id}")
+        self.sp.volume(volume_percent=55, device_id=device_spotify.id)
+        if device_spotify.ip:
+            pyamaha.Device(device_spotify.ip).get(pyamaha.Zone.set_sound_program("main", program="music"))
+        self.sp.shuffle(state=True, device_id=device_spotify.id)
 
     def process_request(self, intent_analysis_result: messages.IntentAnalysisResult) -> None:
         action = Action.find_matching_action(intent_analysis_result.client_request.text)
@@ -166,16 +174,13 @@ class SpotifySkill(commons.BaseSkill):
             self.add_text_to_output_topic(answer, client_request=intent_analysis_result.client_request)
             if action == Action.PLAY_PLAYLIST:
                 if parameters.device_id:
-                    device_spotify_id = self.get_device_id_by_index(parameters.device_id, parameters.devices)
+                    device_spotify = self.get_device_id_by_index(parameters.device_id, parameters.devices)
                 else:
-                    device_spotify_id = self.get_main_device_id(intent_analysis_result.client_request.room)
-                if parameters.playlist_id and device_spotify_id:
+                    device_spotify = self.get_main_device_id(intent_analysis_result.client_request.room)
+                if parameters.playlist_id and device_spotify:
                     playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
                     if playlist_id:
-                        self.sp.start_playback(
-                            device_id=device_spotify_id, context_uri=f"spotify:playlist:{playlist_id}"
-                        )
-                        self.sp.shuffle(state=True, device_id=device_spotify_id)
+                        self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
             elif action == Action.STOP_PLAYBACK:
                 self.sp.pause_playback()
             elif action == Action.NEXT_TRACK:
