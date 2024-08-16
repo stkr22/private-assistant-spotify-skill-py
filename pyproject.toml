@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "private-assistant-spotify-skill"
-version = "0.1.7"
+version = "0.1.8"
 description = "This package allows to use spotify within the private assistant ecosystem."
 authors = ["stkr22 <stkr22@github.com>"]
 readme = "README.md"
@@ -13,7 +13,7 @@ license = "MIT License"
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
 spotipy = "^2.24.0"
-private-assistant-commons = "^0.1.4"
+private-assistant-commons = "^0.1.6"
 pydantic = "^2.8.2"
 psycopg2-binary = "^2.9.9"
 sqlmodel = "^0.0.21"

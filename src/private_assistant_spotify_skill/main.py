@@ -1,7 +1,4 @@
-import logging
-import os
 import pathlib
-import sys
 from typing import Annotated
 
 import jinja2
@@ -12,13 +9,6 @@ from private_assistant_commons import skill_config
 from spotipy.oauth2 import SpotifyOAuth
 
 from private_assistant_spotify_skill import config, db_cache_handler, spotify_skill
-
-log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    stream=sys.stdout,
-)
 
 app = typer.Typer()
 
