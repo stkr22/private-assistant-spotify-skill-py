@@ -13,7 +13,7 @@ license = "MIT License"
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
 spotipy = "^2.24.0"
-private-assistant-commons = "^0.1.4"
+private-assistant-commons = "^0.1.6"
 pydantic = "^2.8.2"
 psycopg2-binary = "^2.9.9"
 sqlmodel = "^0.0.21"

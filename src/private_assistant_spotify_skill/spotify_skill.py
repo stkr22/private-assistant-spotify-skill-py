@@ -1,5 +1,4 @@
 import enum
-import logging
 import string
 import threading
 
@@ -10,12 +9,13 @@ import pyamaha
 import spotipy
 import sqlalchemy
 from private_assistant_commons import messages
+from private_assistant_commons.skill_logger import SkillLogger
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from private_assistant_spotify_skill import models
 
-logger = logging.getLogger(__name__)
+logger = SkillLogger.get_logger(__name__)
 
 
 class Parameters(BaseModel):
