@@ -1,1 +1,5 @@
+{% if parameters.device_id is not none %}
 Started playing playlist {{ parameters.playlist_id }} on device {{ parameters.device_id }}.
+{% else %}
+Started playing playlist {{ parameters.playlist_id }} on the main device.
+{% endif %}

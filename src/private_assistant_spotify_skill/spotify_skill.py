@@ -23,6 +23,7 @@ class Parameters(BaseModel):
     device_id: int | None = None
     playlists: list[dict[str, str]] = []
     devices: list[models.Device] = []
+    volume: int | None = None  # New attribute for volume level
 
 
 class Action(enum.Enum):
@@ -32,6 +33,7 @@ class Action(enum.Enum):
     PLAY_PLAYLIST = ["play", "playlist"]
     STOP_PLAYBACK = ["stop", "playback"]
     NEXT_TRACK = ["next", "track"]
+    SET_VOLUME = ["set", "volume"]
 
     @classmethod
     def find_matching_action(cls, text: str):
@@ -66,6 +68,7 @@ class SpotifySkill(commons.BaseSkill):
             Action.PLAY_PLAYLIST: template_env.get_template("playback_started.j2"),
             Action.STOP_PLAYBACK: template_env.get_template("playback_stopped.j2"),
             Action.NEXT_TRACK: template_env.get_template("next_track.j2"),
+            Action.SET_VOLUME: template_env.get_template("volume_set.j2"),
         }
         self.template_env = template_env
 
@@ -83,22 +86,25 @@ class SpotifySkill(commons.BaseSkill):
             return list(session.exec(select(models.Device)).all())
 
     def _refresh_cache(self):
-        self._playlists_cache = sorted(self.sp.current_user_playlists()["items"], key=lambda x: x["id"])
-        spotify_devices = sorted(self.sp.devices()["devices"], key=lambda x: x["id"])
-        with Session(self.db_engine) as session:
-            for device in spotify_devices:
-                existing_device = session.exec(
-                    select(models.Device).where(models.Device.spotify_id == device["id"])
-                ).first()
-                if not existing_device:
-                    try:
-                        room, name = device["name"].split("-", 1)
-                        new_device = models.Device(spotify_id=device["id"], name=name, room=room.replace("_", ""))
-                        session.add(new_device)
-                    except ValueError:
-                        logger.error("Seems device name is broken, skipping device %s", device)
-            session.commit()
-        logger.info("Cache refreshed")
+        try:
+            self._playlists_cache = sorted(self.sp.current_user_playlists()["items"], key=lambda x: x["id"])
+            spotify_devices = sorted(self.sp.devices()["devices"], key=lambda x: x["id"])
+            with Session(self.db_engine) as session:
+                for device in spotify_devices:
+                    existing_device = session.exec(
+                        select(models.Device).where(models.Device.spotify_id == device["id"])
+                    ).first()
+                    if not existing_device:
+                        try:
+                            room, name = device["name"].split("-", 1)
+                            new_device = models.Device(spotify_id=device["id"], name=name, room=room.replace("_", ""))
+                            session.add(new_device)
+                        except ValueError:
+                            logger.error("Device name is broken, skipping device %s", device)
+                session.commit()
+            logger.info("Cache refreshed")
+        except Exception as e:
+            logger.error("Failed to refresh cache: %s", e)
 
     def _schedule_cache_refresh(self):
         self._cache_refresh_timer = threading.Timer(self.CACHE_REFRESH_INTERVAL, self._refresh_cache_and_reschedule)
@@ -118,6 +124,7 @@ class SpotifySkill(commons.BaseSkill):
         parameters = Parameters()
         parameters.playlists = self.playlists
         parameters.devices = self.devices
+
         if action == Action.PLAY_PLAYLIST:
             for result in intent_analysis_result.numbers:
                 if result.previous_token:
@@ -125,6 +132,12 @@ class SpotifySkill(commons.BaseSkill):
                         parameters.playlist_id = result.number_token
                     if "device" in result.previous_token:
                         parameters.device_id = result.number_token
+
+        elif action == Action.SET_VOLUME:
+            for result in intent_analysis_result.numbers:
+                if result.previous_token and "to" in result.previous_token:
+                    parameters.volume = result.number_token
+
         return parameters
 
     def get_device_id_by_index(self, index: int, devices: list[models.Device]) -> models.Device | None:
@@ -158,30 +171,63 @@ class SpotifySkill(commons.BaseSkill):
         return answer
 
     def start_spotify_playlist(self, device_spotify: models.Device, playlist_id: str) -> None:
-        self.sp.start_playback(device_id=device_spotify.spotify_id, context_uri=f"spotify:playlist:{playlist_id}")
-        self.sp.volume(volume_percent=55, device_id=device_spotify.spotify_id)
-        if device_spotify.ip:
-            pyamaha.Device(device_spotify.ip).get(pyamaha.Zone.set_sound_program("main", program="music"))
-        self.sp.shuffle(state=True, device_id=device_spotify.spotify_id)
+        try:
+            self.sp.start_playback(device_id=device_spotify.spotify_id, context_uri=f"spotify:playlist:{playlist_id}")
+            self.sp.volume(volume_percent=55, device_id=device_spotify.spotify_id)
+            if device_spotify.ip:
+                pyamaha.Device(device_spotify.ip).get(pyamaha.Zone.set_sound_program("main", program="music"))
+            self.sp.shuffle(state=True, device_id=device_spotify.spotify_id)
+            logger.info("Started playlist '%s' on device '%s'", playlist_id, device_spotify.name)
+        except spotipy.SpotifyException as e:
+            logger.error("Failed to start playlist '%s' on device '%s': %s", playlist_id, device_spotify.name, e)
+        except Exception as e:
+            logger.error(
+                "Unexpected error while starting playlist '%s' on device '%s': %s", playlist_id, device_spotify.name, e
+            )
 
     def process_request(self, intent_analysis_result: messages.IntentAnalysisResult) -> None:
         action = Action.find_matching_action(intent_analysis_result.client_request.text)
-        parameters = None
-        if action is not None:
-            parameters = self.find_parameters(action, intent_analysis_result=intent_analysis_result)
-        if parameters is not None and action is not None:
+        if action is None:
+            logger.error("Unrecognized action in text: %s", intent_analysis_result.client_request.text)
+            return
+
+        parameters = self.find_parameters(action, intent_analysis_result=intent_analysis_result)
+        if parameters is not None:
             answer = self.get_answer(action, parameters)
             self.add_text_to_output_topic(answer, client_request=intent_analysis_result.client_request)
-            if action == Action.PLAY_PLAYLIST:
-                if parameters.device_id:
-                    device_spotify = self.get_device_id_by_index(parameters.device_id, parameters.devices)
-                else:
-                    device_spotify = self.get_main_device_id(intent_analysis_result.client_request.room)
-                if parameters.playlist_id and device_spotify:
-                    playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
-                    if playlist_id:
-                        self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
-            elif action == Action.STOP_PLAYBACK:
-                self.sp.pause_playback()
-            elif action == Action.NEXT_TRACK:
-                self.sp.next_track()
+
+            try:
+                if action == Action.PLAY_PLAYLIST:
+                    if parameters.device_id:
+                        device_spotify = self.get_device_id_by_index(parameters.device_id, parameters.devices)
+                    else:
+                        device_spotify = self.get_main_device_id(intent_analysis_result.client_request.room)
+                    if parameters.playlist_id and device_spotify:
+                        playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
+                        if playlist_id:
+                            self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
+                        else:
+                            logger.error("Playlist ID '%s' not found in playlists.", parameters.playlist_id)
+                    else:
+                        logger.error("Device ID '%s' or main device not found.", parameters.device_id)
+
+                elif action == Action.SET_VOLUME:
+                    if parameters.volume is not None:
+                        final_volume = parameters.volume if parameters.volume < 90 else 90
+                        self.sp.volume(volume_percent=final_volume)
+                        logger.info("Spotify volume set to %d%%", final_volume)
+                    else:
+                        logger.error("No volume level provided in the request.")
+
+                elif action == Action.STOP_PLAYBACK:
+                    self.sp.pause_playback()
+                    logger.info("Playback paused.")
+                elif action == Action.NEXT_TRACK:
+                    self.sp.next_track()
+                    logger.info("Skipped to next track.")
+            except spotipy.SpotifyException as e:
+                logger.error("Spotify API error during '%s': %s", action.name, e)
+            except Exception as e:
+                logger.error("Unexpected error during '%s': %s", action.name, e)
+        else:
+            logger.error("No parameters found for the action.")
