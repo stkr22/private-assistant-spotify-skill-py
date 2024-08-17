@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 import jinja2
 import spotipy
 from private_assistant_commons import messages
+from private_assistant_spotify_skill import models
 from private_assistant_spotify_skill.spotify_skill import Action, Parameters, SpotifySkill
 
 
@@ -102,3 +103,66 @@ class TestSpotifySkill(unittest.TestCase):
                     Action.SET_VOLUME,
                     Parameters(playlist_id=None, device_id=None, playlists=[], devices=[], volume=None),
                 )
+
+    def test_play_playlist_action_with_device(self):
+        # Mock the IntentAnalysisResult and its client_request attribute
+        mock_intent_result = Mock()
+        mock_intent_result.client_request = Mock()
+        mock_intent_result.client_request.room = "living_room"
+        mock_intent_result.client_request.text = "please play spotify playlist 1"
+
+        device = Mock(spec=models.Device)
+        device.id = 1
+        device.name = "living_room_speaker"
+        # Mock parameters with playlist and device information
+        parameters = Parameters(
+            playlist_id="1",
+            device_id=1,  # Using an integer to represent the device index
+            playlists=[{"id": "XX", "name": "Chill Vibes"}, {"id": "XXX", "name": "Workout Hits"}],
+            devices=[device],
+        )
+        with patch.object(self.skill, "find_parameters", return_value=parameters):
+            with patch.object(self.skill, "get_device_by_index", return_value=device):
+                with patch.object(self.skill, "start_spotify_playlist") as mock_start_playlist:
+                    # Call the process_request method
+                    self.skill.process_request(mock_intent_result)
+
+                    # Verify that the playlist was started
+                    mock_start_playlist.assert_called_once_with(device_spotify=device, playlist_id="XX")
+
+                    # Verify the output
+                    answer = self.skill.get_answer(Action.PLAY_PLAYLIST, parameters)
+                    self.assertEqual(answer.strip(), "Started playing playlist Chill Vibes on device 1.")
+
+    def test_play_playlist_action_with_main_device(self):
+        # Mock the IntentAnalysisResult and its client_request attribute
+        mock_intent_result = Mock()
+        mock_intent_result.client_request = Mock()
+        mock_intent_result.client_request.room = "living_room"
+        mock_intent_result.client_request.text = "please play spotify playlist 2"
+
+        # Mock parameters with playlist information but no device_id
+        device = Mock(spec=models.Device)
+        device.id = 1
+        device.name = "living_room_speaker"
+        parameters = Parameters(
+            playlist_id="0",
+            device_id=None,
+            playlists=[{"id": "XX", "name": "Chill Vibes"}, {"id": "XXX", "name": "Workout Hits"}],
+            devices=[device],
+        )
+        with patch.object(self.skill, "find_parameters", return_value=parameters):
+            with patch.object(self.skill, "get_main_device", return_value=device):
+                with patch.object(self.skill, "start_spotify_playlist") as mock_start_playlist:
+                    # Call the process_request method
+                    self.skill.process_request(mock_intent_result)
+
+                    # Verify that the playlist was started
+                    mock_start_playlist.assert_called_once_with(
+                        device_spotify=device,
+                        playlist_id="XXX",
+                    )
+
+                    # Verify the output
+                    answer = self.skill.get_answer(Action.PLAY_PLAYLIST, parameters)
+                    self.assertEqual(answer.strip(), "Started playing playlist Workout Hits on the main device.")
