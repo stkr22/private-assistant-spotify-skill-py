@@ -68,7 +68,7 @@ class SpotifySkill(commons.BaseSkill):
             Action.PLAY_PLAYLIST: template_env.get_template("playback_started.j2"),
             Action.STOP_PLAYBACK: template_env.get_template("playback_stopped.j2"),
             Action.NEXT_TRACK: template_env.get_template("next_track.j2"),
-            Action.SET_VOLUME: template_env.get_template("volume_set.j2"),
+            Action.SET_VOLUME: template_env.get_template("set_volume.j2"),
         }
         self.template_env = template_env
 
@@ -140,13 +140,6 @@ class SpotifySkill(commons.BaseSkill):
 
         return parameters
 
-    def get_device_id_by_index(self, index: int, devices: list[models.Device]) -> models.Device | None:
-        try:
-            return devices[index - 1]
-        except IndexError:
-            logger.error("Invalid device index.")
-            return None
-
     def get_playlist_id_by_index(self, index: int, playlists: list[dict[str, str]]) -> str | None:
         try:
             return playlists[index - 1]["id"]
@@ -154,7 +147,14 @@ class SpotifySkill(commons.BaseSkill):
             logger.error("Invalid playlist index.")
             return None
 
-    def get_main_device_id(self, room: str) -> models.Device | None:
+    def get_device_by_index(self, index: int, devices: list[models.Device]) -> models.Device | None:
+        try:
+            return devices[index - 1]
+        except IndexError:
+            logger.error("Invalid device index.")
+            return None
+
+    def get_main_device(self, room: str) -> models.Device | None:
         with Session(self.db_engine) as session:
             main_device = session.exec(
                 select(models.Device).where(models.Device.room == room, models.Device.is_main.__eq__(True))
@@ -199,10 +199,10 @@ class SpotifySkill(commons.BaseSkill):
             try:
                 if action == Action.PLAY_PLAYLIST:
                     if parameters.device_id:
-                        device_spotify = self.get_device_id_by_index(parameters.device_id, parameters.devices)
+                        device_spotify = self.get_device_by_index(parameters.device_id, parameters.devices)
                     else:
-                        device_spotify = self.get_main_device_id(intent_analysis_result.client_request.room)
-                    if parameters.playlist_id and device_spotify:
+                        device_spotify = self.get_main_device(intent_analysis_result.client_request.room)
+                    if parameters.playlist_id is not None and device_spotify:
                         playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
                         if playlist_id:
                             self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
