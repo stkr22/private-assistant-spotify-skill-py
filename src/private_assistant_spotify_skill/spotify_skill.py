@@ -68,6 +68,7 @@ class SpotifySkill(commons.BaseSkill):
             Action.PLAY_PLAYLIST: template_env.get_template("playback_started.j2"),
             Action.STOP_PLAYBACK: template_env.get_template("playback_stopped.j2"),
             Action.NEXT_TRACK: template_env.get_template("next_track.j2"),
+            Action.SET_VOLUME: template_env.get_template("volume_set.j2"),
         }
         self.template_env = template_env
 
