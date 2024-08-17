@@ -23,6 +23,7 @@ class Parameters(BaseModel):
     device_id: int | None = None
     playlists: list[dict[str, str]] = []
     devices: list[models.Device] = []
+    volume: int | None = None  # New attribute for volume level
 
 
 class Action(enum.Enum):
@@ -32,6 +33,7 @@ class Action(enum.Enum):
     PLAY_PLAYLIST = ["play", "playlist"]
     STOP_PLAYBACK = ["stop", "playback"]
     NEXT_TRACK = ["next", "track"]
+    SET_VOLUME = ["set", "volume"]
 
     @classmethod
     def find_matching_action(cls, text: str):
@@ -121,6 +123,7 @@ class SpotifySkill(commons.BaseSkill):
         parameters = Parameters()
         parameters.playlists = self.playlists
         parameters.devices = self.devices
+
         if action == Action.PLAY_PLAYLIST:
             for result in intent_analysis_result.numbers:
                 if result.previous_token:
@@ -128,6 +131,12 @@ class SpotifySkill(commons.BaseSkill):
                         parameters.playlist_id = result.number_token
                     if "device" in result.previous_token:
                         parameters.device_id = result.number_token
+
+        elif action == Action.SET_VOLUME:
+            for result in intent_analysis_result.numbers:
+                if result.previous_token and "to" in result.previous_token:
+                    parameters.volume = result.number_token
+
         return parameters
 
     def get_device_id_by_index(self, index: int, devices: list[models.Device]) -> models.Device | None:
@@ -200,6 +209,15 @@ class SpotifySkill(commons.BaseSkill):
                             logger.error("Playlist ID '%s' not found in playlists.", parameters.playlist_id)
                     else:
                         logger.error("Device ID '%s' or main device not found.", parameters.device_id)
+
+                elif action == Action.SET_VOLUME:
+                    if parameters.volume is not None:
+                        final_volume = parameters.volume if parameters.volume < 90 else 90
+                        self.sp.volume(volume_percent=final_volume)
+                        logger.info("Spotify volume set to %d%%", final_volume)
+                    else:
+                        logger.error("No volume level provided in the request.")
+
                 elif action == Action.STOP_PLAYBACK:
                     self.sp.pause_playback()
                     logger.info("Playback paused.")
