@@ -13,7 +13,12 @@ class TestSpotifySkill(unittest.TestCase):
         self.mock_config = Mock()
         self.mock_sp_oauth = Mock()
         self.mock_spotify = Mock(spec=spotipy.Spotify)
-        self.mock_template_env = Mock(spec=jinja2.Environment)
+        self.mock_template_env = jinja2.Environment(
+            loader=jinja2.PackageLoader(
+                "private_assistant_spotify_skill",
+                "templates",
+            )
+        )
 
         with patch("spotipy.Spotify", return_value=self.mock_spotify):
             self.skill = SpotifySkill(
@@ -21,7 +26,7 @@ class TestSpotifySkill(unittest.TestCase):
                 mqtt_client=self.mock_mqtt_client,
                 template_env=self.mock_template_env,
                 sp_oauth=self.mock_sp_oauth,
-                db_engine=Mock(),  # Replace with actual engine or mock
+                db_engine=Mock(),
             )
 
     def test_find_parameters_for_set_volume(self):
