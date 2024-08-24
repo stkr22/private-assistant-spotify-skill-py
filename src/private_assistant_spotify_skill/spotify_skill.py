@@ -34,6 +34,7 @@ class Action(enum.Enum):
     STOP_PLAYBACK = ["stop", "playback"]
     NEXT_TRACK = ["next", "track"]
     SET_VOLUME = ["set", "volume"]
+    CONTINUE = ["continue"]
 
     @classmethod
     def find_matching_action(cls, text: str):
@@ -69,6 +70,7 @@ class SpotifySkill(commons.BaseSkill):
             Action.STOP_PLAYBACK: template_env.get_template("playback_stopped.j2"),
             Action.NEXT_TRACK: template_env.get_template("next_track.j2"),
             Action.SET_VOLUME: template_env.get_template("set_volume.j2"),
+            Action.CONTINUE: template_env.get_template("continue.j2"),
         }
         self.template_env = template_env
 
@@ -197,7 +199,26 @@ class SpotifySkill(commons.BaseSkill):
             self.add_text_to_output_topic(answer, client_request=intent_analysis_result.client_request)
 
             try:
-                if action == Action.PLAY_PLAYLIST:
+                if action == Action.CONTINUE:
+                    current_playback = self.sp.current_playback()
+                    room = intent_analysis_result.client_request.room
+                    main_device = self.get_main_device(room)
+
+                    if current_playback and current_playback["is_playing"]:
+                        current_device_id = current_playback["device"]["id"]
+                        if main_device and main_device.spotify_id != current_device_id:
+                            self.sp.transfer_playback(device_id=main_device.spotify_id)
+                            logger.info("Transferred playback to device '%s' in room '%s'", main_device.name, room)
+                        else:
+                            logger.info("Playback is already on the correct device in room '%s'", room)
+                    else:
+                        if main_device:
+                            self.sp.start_playback(device_id=main_device.spotify_id)
+                            logger.info("Started playback on device '%s' in room '%s'", main_device.name, room)
+                        else:
+                            logger.error("No main device found in room '%s'", room)
+
+                elif action == Action.PLAY_PLAYLIST:
                     if parameters.device_id:
                         device_spotify = self.get_device_by_index(parameters.device_id, parameters.devices)
                     else:
