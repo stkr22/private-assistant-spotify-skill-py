@@ -166,3 +166,124 @@ class TestSpotifySkill(unittest.TestCase):
                     # Verify the output
                     answer = self.skill.get_answer(Action.PLAY_PLAYLIST, parameters)
                     self.assertEqual(answer.strip(), "Started playing playlist Workout Hits on the main device.")
+
+    def test_continue_action_music_playing_on_correct_device(self):
+        # Mock the IntentAnalysisResult and its client_request attribute
+        mock_intent_result = Mock()
+        mock_intent_result.client_request = Mock()
+        mock_intent_result.client_request.room = "living_room"
+        mock_intent_result.client_request.text = "continue spotify"
+
+        # Mock the current playback to simulate music playing on the correct device
+        self.mock_spotify.current_playback.return_value = {
+            "is_playing": True,
+            "device": {"id": "device_id_living_room"},
+        }
+
+        # Mock the parameters
+        parameters = Parameters(
+            playlist_id=None,
+            device_id=None,
+            playlists=[],
+            devices=[
+                models.Device(
+                    spotify_id="device_id_living_room", name="Living Room Speaker", room="living_room", is_main=True
+                )
+            ],
+        )
+
+        with patch.object(self.skill, "find_parameters", return_value=parameters):
+            with patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]):
+                with patch.object(self.skill, "get_answer") as mock_get_answer:
+                    self.skill.process_request(mock_intent_result)
+
+                    # Verify that transfer_playback was not called since it's already on the correct device
+                    self.mock_spotify.transfer_playback.assert_not_called()
+                    # Verify that the playback is already on the correct device
+                    mock_get_answer.assert_called_once_with(Action.CONTINUE, parameters)
+
+    def test_continue_action_transfer_playback(self):
+        # Mock the IntentAnalysisResult and its client_request attribute
+        mock_intent_result = Mock()
+        mock_intent_result.client_request = Mock()
+        mock_intent_result.client_request.room = "kitchen"
+        mock_intent_result.client_request.text = "continue spotify"
+
+        # Mock the current playback to simulate music playing on a different device
+        self.mock_spotify.current_playback.return_value = {
+            "is_playing": True,
+            "device": {"id": "device_id_living_room"},
+        }
+
+        # Mock the parameters
+        parameters = Parameters(
+            playlist_id=None,
+            device_id=None,
+            playlists=[],
+            devices=[
+                models.Device(spotify_id="device_id_kitchen", name="Kitchen Speaker", room="kitchen", is_main=True)
+            ],
+        )
+
+        with patch.object(self.skill, "find_parameters", return_value=parameters):
+            with patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]):
+                with patch.object(self.skill, "get_answer") as mock_get_answer:
+                    self.skill.process_request(mock_intent_result)
+
+                    # Verify that transfer_playback was called to the kitchen device
+                    self.mock_spotify.transfer_playback.assert_called_once_with(device_id="device_id_kitchen")
+                    # Verify the answer generated for transferring playback
+                    mock_get_answer.assert_called_once_with(Action.CONTINUE, parameters)
+
+    def test_continue_action_start_playback(self):
+        # Mock the IntentAnalysisResult and its client_request attribute
+        mock_intent_result = Mock()
+        mock_intent_result.client_request = Mock()
+        mock_intent_result.client_request.room = "bedroom"
+        mock_intent_result.client_request.text = "continue spotify"
+
+        # Mock the current playback to simulate no music playing
+        self.mock_spotify.current_playback.return_value = {"is_playing": False}
+
+        # Mock the parameters
+        parameters = Parameters(
+            playlist_id=None,
+            device_id=None,
+            playlists=[],
+            devices=[
+                models.Device(spotify_id="device_id_bedroom", name="Bedroom Speaker", room="bedroom", is_main=True)
+            ],
+        )
+
+        with patch.object(self.skill, "find_parameters", return_value=parameters):
+            with patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]):
+                with patch.object(self.skill, "get_answer") as mock_get_answer:
+                    self.skill.process_request(mock_intent_result)
+
+                    # Verify that start_playback was called on the main device in the bedroom
+                    self.mock_spotify.start_playback.assert_called_once_with(device_id="device_id_bedroom")
+                    # Verify the answer generated for starting playback
+                    mock_get_answer.assert_called_once_with(Action.CONTINUE, parameters)
+
+    def test_continue_action_no_main_device_found(self):
+        # Mock the IntentAnalysisResult and its client_request attribute
+        mock_intent_result = Mock()
+        mock_intent_result.client_request = Mock()
+        mock_intent_result.client_request.room = "garage"
+        mock_intent_result.client_request.text = "continue spotify"
+
+        # Mock the current playback to simulate no music playing
+        self.mock_spotify.current_playback.return_value = {"is_playing": False}
+
+        # Mock the parameters
+        parameters = Parameters(playlist_id=None, device_id=None, playlists=[], devices=[])
+
+        with patch.object(self.skill, "find_parameters", return_value=parameters):
+            with patch.object(self.skill, "get_main_device", return_value=None):
+                with patch.object(self.skill, "get_answer") as mock_get_answer:
+                    self.skill.process_request(mock_intent_result)
+
+                    # Verify that start_playback was not called because no main device was found
+                    self.mock_spotify.start_playback.assert_not_called()
+                    # Verify the answer generated indicates no main device was found
+                    mock_get_answer.assert_called_once_with(Action.CONTINUE, parameters)
