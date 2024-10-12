@@ -7,7 +7,7 @@ ARG WHEEL_FILE=my_wheel.wh
 # Copy only the wheel file
 COPY dist/${WHEEL_FILE} /tmp/${WHEEL_FILE}
 
-RUN apt-get update && apt-get install git
+RUN apt-get update && apt-get install -y git
 
 # Install the package
 RUN pip install /tmp/${WHEEL_FILE} && \
