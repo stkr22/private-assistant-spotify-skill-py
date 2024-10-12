@@ -1,5 +1,5 @@
-{% if parameters.volume is not none %}
+{% if parameters.volume is not none -%}
 Spotify volume set to {{ parameters.volume }}%.
-{% else %}
+{% else -%}
 Please specify a volume between 0 and 100.
 {% endif %}

@@ -1,23 +1,23 @@
-{% if parameters.device_id is not none %}
-    {% set current_device = parameters.devices | selectattr("spotify_id", "equalto", parameters.device_id) | list | first %}
-    {% if current_device is not none %}
-        {% if current_device.is_main %}
+{% if parameters.device_id is not none -%}
+    {% set current_device = parameters.devices | selectattr("spotify_id", "equalto", parameters.device_id) | list | first -%}
+    {% if current_device is not none -%}
+        {% if current_device.is_main -%}
             Playback is already on the main device in room {{ current_device.room }}.
-        {% else %}
+        {% else -%}
             Transferred playback to the main device in room {{ current_device.room }}.
-        {% endif %}
-    {% else %}
+        {% endif -%}
+    {% else -%}
         No main device found in the specified room.
-    {% endif %}
-{% else %}
-    {% if parameters.devices | length > 0 %}
-        {% set main_device = parameters.devices | selectattr("is_main", "equalto", True) | list | first %}
-        {% if main_device is not none %}
+    {% endif -%}
+{% else -%}
+    {% if parameters.devices | length > 0 -%}
+        {% set main_device = parameters.devices | selectattr("is_main", "equalto", True) | list | first -%}
+        {% if main_device is not none -%}
             Started playback on the main device in room {{ main_device.room }}.
-        {% else %}
+        {% else -%}
             No main device available to start playback.
-        {% endif %}
-    {% else %}
+        {% endif -%}
+    {% else -%}
         No devices found to start playback.
-    {% endif %}
-{% endif %}
+    {% endif -%}
+{%- endif %}
