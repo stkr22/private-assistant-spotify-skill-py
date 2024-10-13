@@ -160,7 +160,7 @@ class SpotifySkill(commons.BaseSkill):
 
     async def get_main_device(self, room: str) -> models.Device | None:
         for device in self.devices:
-            if device.is_main:
+            if device.is_main and device.room == room:
                 return device
         return None
 
