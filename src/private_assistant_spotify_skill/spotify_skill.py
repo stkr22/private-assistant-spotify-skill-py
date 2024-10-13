@@ -109,11 +109,11 @@ class SpotifySkill(commons.BaseSkill):
                             room, name = device["name"].split("-", 1)
                             new_device = models.Device(spotify_id=device["id"], name=name, room=room.replace("_", ""))
                             session.add(new_device)
-                            self._devices_cache.append(new_device)
+                            self._devices_cache.append(models.Device.model_validate(new_device.model_dump()))
                         except ValueError:
                             self.logger.error("Device name is broken, skipping device %s", device)
                     else:
-                        self._devices_cache.append(existing_device)
+                        self._devices_cache.append(models.Device.model_validate(existing_device.model_dump()))
                 await session.commit()
             self.logger.info("Cache refreshed")
         except Exception as e:
@@ -159,14 +159,9 @@ class SpotifySkill(commons.BaseSkill):
             return None
 
     async def get_main_device(self, room: str) -> models.Device | None:
-        async with AsyncSession(self.db_engine) as session:
-            main_device = (
-                await session.exec(
-                    select(models.Device).where(models.Device.room == room, models.Device.is_main.__eq__(True))
-                )
-            ).first()
-            if main_device:
-                return main_device
+        for device in self.devices:
+            if device.is_main:
+                return device
         return None
 
     def get_answer(self, action: Action, parameters: Parameters) -> str:
