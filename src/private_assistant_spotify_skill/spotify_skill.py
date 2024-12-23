@@ -165,11 +165,10 @@ class SpotifySkill(commons.BaseSkill):
         return None
 
     def get_answer(self, action: Action, parameters: Parameters) -> str:
-        answer = self.action_to_answer[action].render(
+        return self.action_to_answer[action].render(
             action=action,
             parameters=parameters,
         )
-        return answer
 
     async def start_spotify_playlist(self, device_spotify: models.Device, playlist_id: str) -> None:
         try:
@@ -178,15 +177,16 @@ class SpotifySkill(commons.BaseSkill):
                 device_id=device_spotify.spotify_id,
                 context_uri=f"spotify:playlist:{playlist_id}",
             )
-            await asyncio.sleep(1.0)
-            await asyncio.to_thread(self.sp.volume, volume_percent=55, device_id=device_spotify.spotify_id)
-            await asyncio.sleep(1.0)
+            # waiting period for device to turn on
+            await asyncio.sleep(4.0)
+            await asyncio.to_thread(
+                self.sp.volume, volume_percent=device_spotify.default_volume, device_id=device_spotify.spotify_id
+            )
             if device_spotify.ip:
                 async with aiohttp.ClientSession() as client:
                     await pyamaha.AsyncDevice(client, device_spotify.ip).get(
                         pyamaha.Zone.set_sound_program("main", program="music")
                     )
-            await asyncio.sleep(1.0)
             await asyncio.to_thread(self.sp.shuffle, state=True, device_id=device_spotify.spotify_id)
             self.logger.info("Started playlist '%s' on device '%s'", playlist_id, device_spotify.name)
         except spotipy.SpotifyException as e:

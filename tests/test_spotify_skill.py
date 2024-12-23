@@ -96,15 +96,16 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             playlists=[{"id": "XX", "name": "Chill Vibes"}, {"id": "XXX", "name": "Workout Hits"}],
             devices=[device],
         )
-        with patch.object(self.skill, "find_parameters", return_value=parameters):
-            with patch.object(self.skill, "get_device_by_index", return_value=device):
-                with patch("asyncio.to_thread") as mock_to_thread:
-                    await self.skill.process_request(mock_intent_result)
-
-                    # Verify that volume was called next
-                    mock_to_thread.assert_called_with(
-                        self.mock_spotify.volume, volume_percent=55, device_id=device.spotify_id
-                    )
+        with (
+            patch.object(self.skill, "find_parameters", return_value=parameters),
+            patch.object(self.skill, "get_device_by_index", return_value=device),
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
+            await self.skill.process_request(mock_intent_result)
+            # Verify that volume was called next
+            mock_to_thread.assert_called_with(
+                self.mock_spotify.volume, volume_percent=device.default_volume, device_id=device.spotify_id
+            )
 
     async def test_continue_action_music_playing_on_correct_device(self):
         # Mock the IntentAnalysisResult and its client_request attribute
@@ -131,12 +132,14 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-        with patch.object(self.skill, "find_parameters", return_value=parameters):
-            with patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]):
-                await self.skill.process_request(mock_intent_result)
+        with (
+            patch.object(self.skill, "find_parameters", return_value=parameters),
+            patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]),
+        ):
+            await self.skill.process_request(mock_intent_result)
 
-                # Verify that transfer_playback was not called since it's already on the correct device
-                self.mock_spotify.transfer_playback.assert_not_called()
+            # Verify that transfer_playback was not called since it's already on the correct device
+            self.mock_spotify.transfer_playback.assert_not_called()
 
     async def test_continue_action_transfer_playback(self):
         # Mock the IntentAnalysisResult and its client_request attribute
@@ -161,15 +164,15 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-        with patch.object(self.skill, "find_parameters", return_value=parameters):
-            with patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]):
-                with patch("asyncio.to_thread") as mock_to_thread:
-                    await self.skill.process_request(mock_intent_result)
+        with (
+            patch.object(self.skill, "find_parameters", return_value=parameters),
+            patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]),
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
+            await self.skill.process_request(mock_intent_result)
 
-                    # Verify that transfer_playback was called to the kitchen device
-                    mock_to_thread.assert_called_with(
-                        self.mock_spotify.transfer_playback, device_id="device_id_kitchen"
-                    )
+            # Verify that transfer_playback was called to the kitchen device
+            mock_to_thread.assert_called_with(self.mock_spotify.transfer_playback, device_id="device_id_kitchen")
 
     async def test_continue_action_start_playback(self):
         # Mock the IntentAnalysisResult and its client_request attribute
@@ -191,15 +194,15 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-        with patch.object(self.skill, "find_parameters", return_value=parameters):
-            with patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]):
-                with patch("asyncio.to_thread") as mock_to_thread:
-                    await self.skill.process_request(mock_intent_result)
+        with (
+            patch.object(self.skill, "find_parameters", return_value=parameters),
+            patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]),
+            patch("asyncio.to_thread") as mock_to_thread,
+        ):
+            await self.skill.process_request(mock_intent_result)
 
-                    # Verify that start_playback was called on the main device in the bedroom
-                    mock_to_thread.assert_called_with(
-                        self.mock_spotify.transfer_playback, device_id="device_id_bedroom"
-                    )
+            # Verify that start_playback was called on the main device in the bedroom
+            mock_to_thread.assert_called_with(self.mock_spotify.transfer_playback, device_id="device_id_bedroom")
 
     async def test_continue_action_no_main_device_found(self):
         # Mock the IntentAnalysisResult and its client_request attribute
@@ -214,9 +217,11 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
         # Mock the parameters
         parameters = Parameters(playlist_id=None, device_id=None, playlists=[], devices=[])
 
-        with patch.object(self.skill, "find_parameters", return_value=parameters):
-            with patch.object(self.skill, "get_main_device", return_value=None):
-                await self.skill.process_request(mock_intent_result)
+        with (
+            patch.object(self.skill, "find_parameters", return_value=parameters),
+            patch.object(self.skill, "get_main_device", return_value=None),
+        ):
+            await self.skill.process_request(mock_intent_result)
 
-                # Verify that start_playback was not called because no main device was found
-                self.mock_spotify.start_playback.assert_not_called()
+            # Verify that start_playback was not called because no main device was found
+            self.mock_spotify.start_playback.assert_not_called()
