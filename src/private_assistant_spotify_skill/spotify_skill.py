@@ -165,11 +165,10 @@ class SpotifySkill(commons.BaseSkill):
         return None
 
     def get_answer(self, action: Action, parameters: Parameters) -> str:
-        answer = self.action_to_answer[action].render(
+        return self.action_to_answer[action].render(
             action=action,
             parameters=parameters,
         )
-        return answer
 
     async def start_spotify_playlist(self, device_spotify: models.Device, playlist_id: str) -> None:
         try:
