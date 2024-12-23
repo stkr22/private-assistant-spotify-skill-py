@@ -5,6 +5,9 @@ ENV PYTHONUNBUFFERED 1
 # Install uv.
 COPY --from=ghcr.io/astral-sh/uv:0.5.9 /uv /uvx /bin/
 
+RUN apt-get update && apt-get install -y libsndfile1 libspeexdsp-dev git && \
+    rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
