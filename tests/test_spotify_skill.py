@@ -103,7 +103,9 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
         ):
             await self.skill.process_request(mock_intent_result)
             # Verify that volume was called next
-            mock_to_thread.assert_called_with(self.mock_spotify.volume, volume_percent=55, device_id=device.spotify_id)
+            mock_to_thread.assert_called_with(
+                self.mock_spotify.volume, volume_percent=device.default_volume, device_id=device.spotify_id
+            )
 
     async def test_continue_action_music_playing_on_correct_device(self):
         # Mock the IntentAnalysisResult and its client_request attribute
