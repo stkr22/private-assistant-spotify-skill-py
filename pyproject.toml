@@ -22,14 +22,14 @@ classifiers = [
 
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "spotipy>=2.24.0,<3.0.0",
-    "private-assistant-commons>=2.0.0,<3.0.0",
-    "pydantic>=2.8.2,<3.0.0",
-    "sqlmodel>=0.0.21,<0.1.0",
-    "jinja2>=3.1.4,<4.0.0",
-    "asyncpg>=0.29.0,<0.30.0",
-    "psycopg[binary]>=3.2.3,<4.0.0",
-    "aiohttp>=3.10.10,<4.0.0",
+    "spotipy>=2.24.0",
+    "private-assistant-commons>=2.0.0",
+    "pydantic>=2.8.2",
+    "sqlmodel>=0.0.21",
+    "jinja2>=3.1.4",
+    "asyncpg>=0.29.0",
+    "psycopg[binary]>=3.2.3",
+    "aiohttp>=3.10.10",
     "pyamaha"
 ]
 
@@ -45,8 +45,8 @@ dev = [
     "mypy>=1.11.0",
     "pytest>=8.3.3",
     "pytest-cov>=6.0.0",
-    "types-pyyaml>=6.0.12.20240311,<7.0.0",
-    "aiosqlite>=0.20.0,<0.21.0"
+    "types-pyyaml>=6.0.12.20240311",
+    "aiosqlite>=0.20.0"
 ]
 
 [[tool.mypy.overrides]]

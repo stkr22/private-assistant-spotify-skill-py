@@ -508,7 +508,7 @@ wheels = [
 
 [[package]]
 name = "private-assistant-spotify-skill"
-version = "1.0.4"
+version = "1.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -534,25 +534,25 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.10.10,<4.0.0" },
-    { name = "asyncpg", specifier = ">=0.29.0,<0.30.0" },
-    { name = "jinja2", specifier = ">=3.1.4,<4.0.0" },
-    { name = "private-assistant-commons", specifier = ">=2.0.0,<3.0.0" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3,<4.0.0" },
+    { name = "aiohttp", specifier = ">=3.10.10" },
+    { name = "asyncpg", specifier = ">=0.29.0" },
+    { name = "jinja2", specifier = ">=3.1.4" },
+    { name = "private-assistant-commons", specifier = ">=2.0.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3" },
     { name = "pyamaha", git = "https://github.com/rsc-dev/pyamaha.git?rev=ac3a64d2990ec4b4e258c2218a3ae93600419e6f" },
-    { name = "pydantic", specifier = ">=2.8.2,<3.0.0" },
-    { name = "spotipy", specifier = ">=2.24.0,<3.0.0" },
-    { name = "sqlmodel", specifier = ">=0.0.21,<0.1.0" },
+    { name = "pydantic", specifier = ">=2.8.2" },
+    { name = "spotipy", specifier = ">=2.24.0" },
+    { name = "sqlmodel", specifier = ">=0.0.21" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aiosqlite", specifier = ">=0.20.0,<0.21.0" },
+    { name = "aiosqlite", specifier = ">=0.20.0" },
     { name = "mypy", specifier = ">=1.11.0" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.8.0" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20240311,<7.0.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20240311" },
 ]
 
 [[package]]
