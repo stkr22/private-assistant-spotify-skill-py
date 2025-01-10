@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "private-assistant-spotify-skill"
-version = "1.1.1"
+version = "1.1.2"
 description = "This package allows to use spotify within the private assistant ecosystem."
 authors = [
     { name = "stkr22", email = "stkr22@github.com" }
@@ -22,14 +22,14 @@ classifiers = [
 
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "spotipy>=2.24.0",
-    "private-assistant-commons>=2.0.0",
-    "pydantic>=2.8.2",
-    "sqlmodel>=0.0.21",
-    "jinja2>=3.1.4",
-    "asyncpg>=0.29.0",
-    "psycopg[binary]>=3.2.3",
-    "aiohttp>=3.10.10",
+    "spotipy~=2.24.0",
+    "private-assistant-commons~=2.0.0",
+    "pydantic~=2.9.2",
+    "sqlmodel~=0.0.21",
+    "jinja2~=3.1.4",
+    "asyncpg~=0.29.0",
+    "psycopg[binary]~=3.2.3",
+    "aiohttp~=3.11.10",
     "pyamaha"
 ]
 
@@ -41,12 +41,12 @@ private-assistant-spotify-skill = "private_assistant_spotify_skill.main:app"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.0",
-    "mypy>=1.11.0",
-    "pytest>=8.3.3",
-    "pytest-cov>=6.0.0",
-    "types-pyyaml>=6.0.12.20240311",
-    "aiosqlite>=0.20.0"
+    "ruff~=0.8.0",
+    "mypy~=1.11.0",
+    "pytest~=8.3.3",
+    "pytest-cov~=6.0.0",
+    "types-pyyaml~=6.0.12.20240311",
+    "aiosqlite~=0.20.0"
 ]
 
 [[tool.mypy.overrides]]
