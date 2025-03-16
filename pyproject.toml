@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "private-assistant-spotify-skill"
-version = "1.1.2"
+version = "1.2.0"
 description = "This package allows to use spotify within the private assistant ecosystem."
 authors = [
     { name = "stkr22", email = "stkr22@github.com" }
