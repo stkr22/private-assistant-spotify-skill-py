@@ -47,8 +47,6 @@ class Action(enum.Enum):
 
 
 class SpotifySkill(commons.BaseSkill):
-    CACHE_REFRESH_INTERVAL = 3600  # 1 hour in seconds
-
     def __init__(
         self,
         config_obj: config.SkillConfig,
@@ -79,7 +77,6 @@ class SpotifySkill(commons.BaseSkill):
         self._playlists_cache: list[dict[str, str]] = []
         self._devices_cache: list[models.Device] = []
         self.add_task(self._refresh_cache())
-        self._refresh_cache_loop_task = self.add_task(self._refresh_cache_loop())
 
     @property
     def playlists(self) -> list[dict[str, str]]:
@@ -88,11 +85,6 @@ class SpotifySkill(commons.BaseSkill):
     @property
     def devices(self) -> list[models.Device]:
         return self._devices_cache
-
-    async def _refresh_cache_loop(self):
-        while True:
-            await self._refresh_cache()
-            await asyncio.sleep(self.CACHE_REFRESH_INTERVAL)
 
     async def _refresh_cache(self):
         try:
