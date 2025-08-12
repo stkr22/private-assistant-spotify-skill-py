@@ -10,4 +10,6 @@
 
 Owner: stkr22
 
+**READ THE AGENTS.md**
+
 This package allows to use spotify within the private assistant ecosystem.
