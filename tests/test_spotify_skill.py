@@ -22,7 +22,12 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        self.mock_task_group = AsyncMock()
+        # Create a mock task that has add_done_callback method
+        self.mock_task = Mock()
+        self.mock_task.add_done_callback = Mock()
+        
+        self.mock_task_group = Mock()
+        self.mock_task_group.create_task = Mock(return_value=self.mock_task)
         self.mock_logger = Mock()
 
         # Patch spotipy.Spotify with a mock

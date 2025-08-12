@@ -336,16 +336,17 @@ wheels = [
 
 [[package]]
 name = "private-assistant-commons"
-version = "3.0.2"
+version = "3.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiomqtt" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/23/da2026266e23839a0691899575bebdf7c56846ce856e3b5372a9d9e95446/private_assistant_commons-3.0.2.tar.gz", hash = "sha256:1811f5a485ae560c3a598122556d69d55ec2bae7244936185dfe80ad62090574", size = 47842, upload-time = "2025-07-20T19:37:17.143Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/4c/553c4378669edcc87b4102824ce043cf604e9f9185dfab6257361444b166/private_assistant_commons-3.6.0.tar.gz", hash = "sha256:24340ccafc803a91982266fdc363778d40c6853b54c7d86620cd3292dc184e5d", size = 85151, upload-time = "2025-07-24T18:53:59.241Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/37/eaddde04fea5edcbffef5159e3f0e1b6036272b480fb9e03b2ef158f602f/private_assistant_commons-3.0.2-py3-none-any.whl", hash = "sha256:4e07143739b36ca2bf5cce4a7d6596a0b53308d5f00a65a410b0a4665a53cb2a", size = 21887, upload-time = "2025-07-20T19:37:15.809Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/e9/31da8714d08b29866cede4f5ae8afae02e48ee25720663007f0b360e8e30/private_assistant_commons-3.6.0-py3-none-any.whl", hash = "sha256:a92b831369b110290d16fb41732df1c32e3643cd43f332d8203d4945dcc262d3", size = 33950, upload-time = "2025-07-24T18:53:57.928Z" },
 ]
 
 [[package]]
@@ -379,7 +380,7 @@ dev = [
 requires-dist = [
     { name = "asyncpg", specifier = "~=0.29.0" },
     { name = "jinja2", specifier = "~=3.1.4" },
-    { name = "private-assistant-commons", specifier = "~=3.0.0" },
+    { name = "private-assistant-commons", specifier = "~=3.6.0" },
     { name = "psycopg", extras = ["binary"], specifier = "~=3.2.9" },
     { name = "pydantic", specifier = "~=2.9.2" },
     { name = "spotipy", specifier = "~=2.25.1" },
@@ -591,15 +592,15 @@ wheels = [
 
 [[package]]
 name = "rich"
-version = "14.1.0"
+version = "13.9.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown-it-py" },
     { name = "pygments" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fe/75/af448d8e52bf1d8fa6a9d089ca6c07ff4453d86c65c145d0a300bb073b9b/rich-14.1.0.tar.gz", hash = "sha256:e497a48b844b0320d45007cdebfeaeed8db2a4f4bcf49f15e455cfc4af11eaa8", size = 224441, upload-time = "2025-07-25T07:32:58.125Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/3a/0316b28d0761c6734d6bc14e770d85506c986c85ffb239e688eeaab2c2bc/rich-13.9.4.tar.gz", hash = "sha256:439594978a49a09530cff7ebc4b5c7103ef57baf48d5ea3184f21d9a2befa098", size = 223149, upload-time = "2024-11-01T16:43:57.873Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/30/3c4d035596d3cf444529e0b2953ad0466f6049528a879d27534700580395/rich-14.1.0-py3-none-any.whl", hash = "sha256:536f5f1785986d6dbdea3c75205c473f970777b4a0d6c6dd1b696aa05a3fa04f", size = 243368, upload-time = "2025-07-25T07:32:56.73Z" },
+    { url = "https://files.pythonhosted.org/packages/19/71/39c7c0d87f8d4e6c020a393182060eaefeeae6c01dab6a84ec346f2567df/rich-13.9.4-py3-none-any.whl", hash = "sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90", size = 242424, upload-time = "2024-11-01T16:43:55.817Z" },
 ]
 
 [[package]]
