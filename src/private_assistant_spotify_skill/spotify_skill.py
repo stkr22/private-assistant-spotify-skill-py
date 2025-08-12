@@ -3,11 +3,9 @@ import enum
 import logging
 import string
 
-import aiohttp
 import aiomqtt
 import jinja2
 import private_assistant_commons as commons
-import pyamaha  # type: ignore[import-untyped]
 import spotipy
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -179,11 +177,6 @@ class SpotifySkill(commons.BaseSkill):
             # waiting period for device to turn on
             await asyncio.sleep(3.0)
             await asyncio.to_thread(self.sp.volume, volume_percent=device_spotify.default_volume)
-            if device_spotify.ip:
-                async with aiohttp.ClientSession() as client:
-                    await pyamaha.AsyncDevice(client, device_spotify.ip).get(
-                        pyamaha.Zone.set_sound_program("main", program="music")
-                    )
             await asyncio.to_thread(self.sp.shuffle, state=True)
             self.logger.info("Started playlist '%s' on device '%s'", playlist_id, device_spotify.name)
         except spotipy.SpotifyException as e:

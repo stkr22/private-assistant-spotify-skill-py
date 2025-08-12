@@ -22,7 +22,12 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        self.mock_task_group = AsyncMock()
+        # Create a mock task that has add_done_callback method
+        self.mock_task = Mock()
+        self.mock_task.add_done_callback = Mock()
+        
+        self.mock_task_group = Mock()
+        self.mock_task_group.create_task = Mock(return_value=self.mock_task)
         self.mock_logger = Mock()
 
         # Patch spotipy.Spotify with a mock
@@ -102,8 +107,8 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             patch("asyncio.to_thread") as mock_to_thread,
         ):
             await self.skill.process_request(mock_intent_result)
-            # Verify that volume was called next
-            mock_to_thread.assert_called_with(self.mock_spotify.volume, volume_percent=device.default_volume)
+            # Verify that shuffle was called last (after volume call was removed pyamaha code)
+            mock_to_thread.assert_called_with(self.mock_spotify.shuffle, state=True)
 
     async def test_continue_action_music_playing_on_correct_device(self):
         # Mock the IntentAnalysisResult and its client_request attribute

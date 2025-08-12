@@ -28,19 +28,14 @@ classifiers = [
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "spotipy~=2.25.1",
-    "private-assistant-commons~=3.0.0",
+    "private-assistant-commons~=3.6.0",
     "pydantic~=2.9.2",
     "sqlmodel~=0.0.24",
     "jinja2~=3.1.4",
     "asyncpg~=0.29.0",
     "psycopg[binary]~=3.2.9",
-    "aiohttp~=3.11.10",
-    "pyamaha",
     "typer~=0.15.1"
 ]
-
-[tool.uv.sources]
-pyamaha = {git = "https://github.com/rsc-dev/pyamaha.git", rev = "ac3a64d2990ec4b4e258c2218a3ae93600419e6f"}
 
 [project.scripts]
 private-assistant-spotify-skill = "private_assistant_spotify_skill.main:app"
