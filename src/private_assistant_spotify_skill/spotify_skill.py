@@ -7,7 +7,7 @@ import aiohttp
 import aiomqtt
 import jinja2
 import private_assistant_commons as commons
-import pyamaha
+import pyamaha  # type: ignore[import-untyped]
 import spotipy
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -15,6 +15,9 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from private_assistant_spotify_skill import config, models
+
+# Constants
+MAX_VOLUME_LIMIT = 90
 
 
 class Parameters(BaseModel):
@@ -26,14 +29,14 @@ class Parameters(BaseModel):
 
 
 class Action(enum.Enum):
-    HELP = ["help"]
-    LIST_PLAYLISTS = ["list", "playlists"]
-    LIST_DEVICES = ["list", "devices"]
-    PLAY_PLAYLIST = ["play", "playlist"]
-    STOP_PLAYBACK = ["stop", "playback"]
-    NEXT_TRACK = ["next", "track"]
-    SET_VOLUME = ["set", "volume"]
-    CONTINUE = ["continue"]
+    HELP = ["help"]  # noqa: RUF012
+    LIST_PLAYLISTS = ["list", "playlists"]  # noqa: RUF012
+    LIST_DEVICES = ["list", "devices"]  # noqa: RUF012
+    PLAY_PLAYLIST = ["play", "playlist"]  # noqa: RUF012
+    STOP_PLAYBACK = ["stop", "playback"]  # noqa: RUF012
+    NEXT_TRACK = ["next", "track"]  # noqa: RUF012
+    SET_VOLUME = ["set", "volume"]  # noqa: RUF012
+    CONTINUE = ["continue"]  # noqa: RUF012
 
     @classmethod
     def find_matching_action(cls, text: str):
@@ -47,7 +50,7 @@ class Action(enum.Enum):
 
 
 class SpotifySkill(commons.BaseSkill):
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         config_obj: config.SkillConfig,
         mqtt_client: aiomqtt.Client,
@@ -110,6 +113,10 @@ class SpotifySkill(commons.BaseSkill):
             self.logger.info("Cache refreshed")
         except Exception as e:
             self.logger.error("Failed to refresh cache: %s", e)
+
+    async def skill_preparations(self) -> None:
+        """Perform any additional skill preparations beyond constructor initialization."""
+        pass
 
     async def calculate_certainty(self, intent_analysis_result: commons.IntentAnalysisResult) -> float:
         if "spotify" in intent_analysis_result.nouns:
@@ -197,61 +204,78 @@ class SpotifySkill(commons.BaseSkill):
             return
 
         parameters = await self.find_parameters(action, intent_analysis_result=intent_analysis_result)
-        if parameters is not None:
-            answer = self.get_answer(action, parameters)
-            self.add_task(self.send_response(answer, client_request=intent_analysis_result.client_request))
-
-            try:
-                if action == Action.CONTINUE:
-                    current_playback = await asyncio.to_thread(self.sp.current_playback)
-                    room = intent_analysis_result.client_request.room
-                    main_device = await self.get_main_device(room)
-
-                    if current_playback and current_playback["is_playing"]:
-                        current_device_id = current_playback["device"]["id"]
-                        if main_device and main_device.spotify_id != current_device_id:
-                            await asyncio.to_thread(self.sp.transfer_playback, device_id=main_device.spotify_id)
-                            self.logger.info("Transferred playback to device '%s' in room '%s'", main_device.name, room)
-                        else:
-                            self.logger.info("Playback is already on the correct device in room '%s'", room)
-                    else:
-                        if main_device:
-                            await asyncio.to_thread(self.sp.start_playback, device_id=main_device.spotify_id)
-                            self.logger.info("Started playback on device '%s' in room '%s'", main_device.name, room)
-                        else:
-                            self.logger.error("No main device found in room '%s'", room)
-
-                elif action == Action.PLAY_PLAYLIST:
-                    if parameters.device_id:
-                        device_spotify = self.get_device_by_index(parameters.device_id, parameters.devices)
-                    else:
-                        device_spotify = await self.get_main_device(intent_analysis_result.client_request.room)
-                    if parameters.playlist_id is not None and device_spotify:
-                        playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
-                        if playlist_id:
-                            await self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
-                        else:
-                            self.logger.error("Playlist ID '%s' not found in playlists.", parameters.playlist_id)
-                    else:
-                        self.logger.error("Device ID '%s' or main device not found.", parameters.device_id)
-
-                elif action == Action.SET_VOLUME:
-                    if parameters.volume is not None:
-                        final_volume = parameters.volume if parameters.volume < 90 else 90
-                        await asyncio.to_thread(self.sp.volume, volume_percent=final_volume)
-                        self.logger.info("Spotify volume set to %d%%", final_volume)
-                    else:
-                        self.logger.error("No volume level provided in the request.")
-
-                elif action == Action.STOP_PLAYBACK:
-                    await asyncio.to_thread(self.sp.pause_playback)
-                    self.logger.info("Playback paused.")
-                elif action == Action.NEXT_TRACK:
-                    await asyncio.to_thread(self.sp.next_track)
-                    self.logger.info("Skipped to next track.")
-            except spotipy.SpotifyException as e:
-                self.logger.error("Spotify API error during '%s': %s", action.name, e)
-            except Exception as e:
-                self.logger.error("Unexpected error during '%s': %s", action.name, e, exc_info=True)
-        else:
+        if parameters is None:
             self.logger.error("No parameters found for the action.")
+            return
+
+        answer = self.get_answer(action, parameters)
+        self.add_task(self.send_response(answer, client_request=intent_analysis_result.client_request))
+
+        try:
+            await self._execute_action(action, parameters, intent_analysis_result)
+        except spotipy.SpotifyException as e:
+            self.logger.error("Spotify API error during '%s': %s", action.name, e)
+        except Exception as e:
+            self.logger.error("Unexpected error during '%s': %s", action.name, e, exc_info=True)
+
+    async def _execute_action(
+        self, action: Action, parameters: Parameters, intent_analysis_result: commons.IntentAnalysisResult
+    ) -> None:
+        if action == Action.CONTINUE:
+            await self._handle_continue_action(intent_analysis_result.client_request.room)
+        elif action == Action.PLAY_PLAYLIST:
+            await self._handle_play_playlist_action(parameters, intent_analysis_result.client_request.room)
+        elif action == Action.SET_VOLUME:
+            await self._handle_set_volume_action(parameters)
+        elif action == Action.STOP_PLAYBACK:
+            await self._handle_stop_playback_action()
+        elif action == Action.NEXT_TRACK:
+            await self._handle_next_track_action()
+
+    async def _handle_continue_action(self, room: str) -> None:
+        current_playback = await asyncio.to_thread(self.sp.current_playback)
+        main_device = await self.get_main_device(room)
+
+        if current_playback and current_playback["is_playing"]:
+            current_device_id = current_playback["device"]["id"]
+            if main_device and main_device.spotify_id != current_device_id:
+                await asyncio.to_thread(self.sp.transfer_playback, device_id=main_device.spotify_id)
+                self.logger.info("Transferred playback to device '%s' in room '%s'", main_device.name, room)
+            else:
+                self.logger.info("Playback is already on the correct device in room '%s'", room)
+        elif main_device:
+            await asyncio.to_thread(self.sp.start_playback, device_id=main_device.spotify_id)
+            self.logger.info("Started playback on device '%s' in room '%s'", main_device.name, room)
+        else:
+            self.logger.error("No main device found in room '%s'", room)
+
+    async def _handle_play_playlist_action(self, parameters: Parameters, room: str) -> None:
+        if parameters.device_id:
+            device_spotify = self.get_device_by_index(parameters.device_id, parameters.devices)
+        else:
+            device_spotify = await self.get_main_device(room)
+
+        if parameters.playlist_id is not None and device_spotify:
+            playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
+            if playlist_id:
+                await self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
+            else:
+                self.logger.error("Playlist ID '%s' not found in playlists.", parameters.playlist_id)
+        else:
+            self.logger.error("Device ID '%s' or main device not found.", parameters.device_id)
+
+    async def _handle_set_volume_action(self, parameters: Parameters) -> None:
+        if parameters.volume is not None:
+            final_volume = parameters.volume if parameters.volume < MAX_VOLUME_LIMIT else MAX_VOLUME_LIMIT
+            await asyncio.to_thread(self.sp.volume, volume_percent=final_volume)
+            self.logger.info("Spotify volume set to %d%%", final_volume)
+        else:
+            self.logger.error("No volume level provided in the request.")
+
+    async def _handle_stop_playback_action(self) -> None:
+        await asyncio.to_thread(self.sp.pause_playback)
+        self.logger.info("Playback paused.")
+
+    async def _handle_next_track_action(self) -> None:
+        await asyncio.to_thread(self.sp.next_track)
+        self.logger.info("Skipped to next track.")
