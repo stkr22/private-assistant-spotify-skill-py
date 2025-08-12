@@ -114,6 +114,10 @@ class SpotifySkill(commons.BaseSkill):
         except Exception as e:
             self.logger.error("Failed to refresh cache: %s", e)
 
+    async def skill_preparations(self) -> None:
+        """Perform any additional skill preparations beyond constructor initialization."""
+        pass
+
     async def calculate_certainty(self, intent_analysis_result: commons.IntentAnalysisResult) -> float:
         if "spotify" in intent_analysis_result.nouns:
             return 1.0
