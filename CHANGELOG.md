@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v1.3.0...v1.3.1) (2025-08-13)
+
+
+### Documentation
+
+* add comprehensive documentation and docstrings ([41a7b25](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/41a7b257cb320b9da771a4914a3521ae8ebfb336))
+* add comprehensive documentation and docstrings ([767eb40](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/767eb408b5a5aa3888ef8d874926b882a827ba26))
+
 ## [1.3.0](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v1.2.1...v1.3.0) (2025-08-12)
 
 
