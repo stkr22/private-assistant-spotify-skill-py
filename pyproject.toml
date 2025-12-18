@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "spotipy~=2.25.1",
     "private-assistant-commons~=3.6.0",
