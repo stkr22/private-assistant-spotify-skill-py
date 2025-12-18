@@ -1,112 +1,90 @@
 """Spotify skill implementation for Private Assistant ecosystem.
 
 This module provides voice-controlled Spotify integration including playback control,
-playlist management, device switching, and volume control through natural language commands.
+playlist management, device switching, and volume control through intent-based commands.
 """
 
 import asyncio
-import enum
 import logging
-import string
+from dataclasses import dataclass
 
 import aiomqtt
 import jinja2
 import private_assistant_commons as commons
 import spotipy
+from private_assistant_commons import IntentRequest, IntentType
 from pydantic import BaseModel
+from spotipy.oauth2 import SpotifyOAuth
 from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
-from private_assistant_spotify_skill import config, models
+from private_assistant_spotify_skill import models
 
 # AIDEV-NOTE: Volume limit for hearing protection - never exceed this value
 MAX_VOLUME_LIMIT = 90
+
+
+@dataclass
+class SpotifySkillDependencies:
+    """Container for SpotifySkill dependencies to reduce constructor parameter count.
+
+    Groups related dependencies into a single object to simplify dependency injection
+    and reduce the number of constructor parameters in SpotifySkill.
+
+    Attributes:
+        db_engine: Async SQLAlchemy engine for database operations.
+        template_env: Jinja2 environment for response template rendering.
+        sp_oauth: Configured Spotify OAuth manager for API authentication.
+    """
+
+    db_engine: AsyncEngine
+    template_env: jinja2.Environment
+    sp_oauth: SpotifyOAuth
 
 
 class Parameters(BaseModel):
     """Parameter container for command processing.
 
     Encapsulates extracted parameters from voice commands including
-    target devices, playlists, and volume levels. Used to pass
-    structured data between command parsing and execution phases.
+    target devices, playlists, and volume levels.
 
     Attributes:
-        playlist_id: 1-based index of playlist in user's playlists.
-        device_id: 1-based index of device in available devices.
+        playlist_index: 1-based index of playlist in user's playlists.
         playlists: Cached list of user's Spotify playlists.
-        devices: Cached list of available Spotify devices.
+        devices: List of available Spotify devices.
+        target_device: Target device for playback operations.
         volume: Target volume level (0-100) for volume commands.
+        current_room: Room where the request originated.
+        is_resume: Whether this is a resume/continue operation.
     """
 
-    playlist_id: int | None = None
-    device_id: int | None = None
+    playlist_index: int | None = None
     playlists: list[dict[str, str]] = []
-    devices: list[models.Device] = []
+    devices: list[models.SpotifyDevice] = []
+    target_device: models.SpotifyDevice | None = None
     volume: int | None = None
-
-
-class Action(enum.Enum):
-    """Enumeration of supported voice commands.
-
-    Each action maps to a list of keywords that must all be present
-    in the voice command for a match. The matching algorithm uses
-    set intersection to ensure all required keywords are found.
-    """
-
-    HELP = ["help"]  # noqa: RUF012
-    LIST_PLAYLISTS = ["list", "playlists"]  # noqa: RUF012
-    LIST_DEVICES = ["list", "devices"]  # noqa: RUF012
-    PLAY_PLAYLIST = ["play", "playlist"]  # noqa: RUF012
-    STOP_PLAYBACK = ["stop", "playback"]  # noqa: RUF012
-    NEXT_TRACK = ["next", "track"]  # noqa: RUF012
-    SET_VOLUME = ["set", "volume"]  # noqa: RUF012
-    CONTINUE = ["continue"]  # noqa: RUF012
-
-    @classmethod
-    def find_matching_action(cls, text: str) -> "Action | None":
-        """Find the matching action for a given text command.
-
-        Uses keyword matching to identify the intended action from voice input.
-        All keywords for an action must be present in the text for a match.
-
-        Args:
-            text: Raw voice command text to analyze.
-
-        Returns:
-            Matching Action enum value or None if no match found.
-        """
-        # AIDEV-NOTE: Remove punctuation to improve keyword matching reliability
-        text = text.translate(str.maketrans("", "", string.punctuation))
-        text_words = set(text.lower().split())
-
-        for action in cls:
-            if all(word in text_words for word in action.value):
-                return action
-        return None
+    current_room: str = ""
+    is_resume: bool = False
 
 
 class SpotifySkill(commons.BaseSkill):
     """Main Spotify skill implementation for voice-controlled music playback.
 
     Provides comprehensive Spotify integration including playlist management,
-    device control, playback operations, and volume adjustment through voice commands.
-    Uses async operations with caching for optimal performance.
+    device control, playback operations, and volume adjustment through intent-based commands.
+    Uses the global device registry for device management and Redis for OAuth caching.
 
     Attributes:
         sp: Spotify API client instance with OAuth authentication.
-        db_engine: Async database engine for device and token management.
-        action_to_answer: Mapping of actions to Jinja2 response templates.
+        db_engine: Async database engine for persistence.
         template_env: Jinja2 environment for response generation.
+        intent_to_template: Mapping of intent types to response templates.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        config_obj: config.SkillConfig,
+        config_obj: commons.SkillConfig,
         mqtt_client: aiomqtt.Client,
-        template_env: jinja2.Environment,
-        sp_oauth: spotipy.SpotifyOAuth,
-        db_engine: AsyncEngine,
+        dependencies: SpotifySkillDependencies,
         task_group: asyncio.TaskGroup,
         logger: logging.Logger,
     ) -> None:
@@ -115,377 +93,527 @@ class SpotifySkill(commons.BaseSkill):
         Args:
             config_obj: Skill configuration including Spotify credentials.
             mqtt_client: MQTT client for ecosystem communication.
-            template_env: Jinja2 environment for response templates.
-            sp_oauth: Configured Spotify OAuth manager.
-            db_engine: Async database engine for persistence.
+            dependencies: Injected dependencies (database, templates, OAuth).
             task_group: AsyncIO task group for background operations.
             logger: Logger instance for skill operations.
         """
-        super().__init__(config_obj, mqtt_client, task_group, logger=logger)
-        self.sp = spotipy.Spotify(auth_manager=sp_oauth)
-        self.db_engine = db_engine
-        self.task_group = task_group
+        super().__init__(
+            config_obj=config_obj,
+            mqtt_client=mqtt_client,
+            task_group=task_group,
+            engine=dependencies.db_engine,
+            logger=logger,
+        )
 
-        # AIDEV-NOTE: Template mapping for action responses - add new templates here
-        self.action_to_answer: dict[Action, jinja2.Template] = {
-            Action.HELP: template_env.get_template("help.j2"),
-            Action.LIST_PLAYLISTS: template_env.get_template("list_playlists.j2"),
-            Action.LIST_DEVICES: template_env.get_template("list_devices.j2"),
-            Action.PLAY_PLAYLIST: template_env.get_template("playback_started.j2"),
-            Action.STOP_PLAYBACK: template_env.get_template("playback_stopped.j2"),
-            Action.NEXT_TRACK: template_env.get_template("next_track.j2"),
-            Action.SET_VOLUME: template_env.get_template("set_volume.j2"),
-            Action.CONTINUE: template_env.get_template("continue.j2"),
+        self.sp = spotipy.Spotify(auth_manager=dependencies.sp_oauth)
+        self.db_engine = dependencies.db_engine
+        self.template_env = dependencies.template_env
+
+        # AIDEV-NOTE: Intent-based configuration replaces calculate_certainty method
+        self.supported_intents = {
+            IntentType.MEDIA_PLAY: 0.8,
+            IntentType.MEDIA_STOP: 0.8,
+            IntentType.MEDIA_NEXT: 0.8,
+            IntentType.MEDIA_VOLUME_SET: 0.8,
+            IntentType.QUERY_LIST: 0.7,
+            IntentType.SYSTEM_HELP: 0.7,
         }
-        self.template_env = template_env
 
-        # AIDEV-NOTE: In-memory caches for performance - refreshed periodically
+        # AIDEV-NOTE: Device type for global registry
+        self.supported_device_types = ["spotify_device"]
+
+        # AIDEV-NOTE: In-memory playlist cache - devices come from global registry
         self._playlists_cache: list[dict[str, str]] = []
-        self._devices_cache: list[models.Device] = []
-        self.add_task(self._refresh_cache())
+
+        # AIDEV-NOTE: Template preloading at init prevents runtime template lookup failures
+        self.intent_to_template: dict[IntentType | str, jinja2.Template] = {}
+        self._load_templates()
+
+    def _load_templates(self) -> None:
+        """Load and validate all required templates with fallback handling.
+
+        Raises:
+            RuntimeError: If critical templates cannot be loaded.
+        """
+        template_mappings: dict[IntentType | str, str] = {
+            IntentType.SYSTEM_HELP: "help.j2",
+            IntentType.MEDIA_PLAY: "playback_started.j2",
+            IntentType.MEDIA_STOP: "playback_stopped.j2",
+            IntentType.MEDIA_NEXT: "next_track.j2",
+            IntentType.MEDIA_VOLUME_SET: "set_volume.j2",
+            "list_playlists": "list_playlists.j2",
+            "list_devices": "list_devices.j2",
+            "continue": "continue.j2",
+        }
+
+        failed_templates = []
+        for key, template_name in template_mappings.items():
+            try:
+                self.intent_to_template[key] = self.template_env.get_template(template_name)
+            except jinja2.TemplateNotFound as e:
+                self.logger.error("Failed to load template %s: %s", template_name, e)
+                failed_templates.append(template_name)
+
+        if failed_templates:
+            raise RuntimeError(f"Critical templates failed to load: {', '.join(failed_templates)}")
+
+        self.logger.debug("All templates successfully loaded during initialization.")
 
     @property
     def playlists(self) -> list[dict[str, str]]:
+        """Get cached playlists."""
         return self._playlists_cache
 
-    @property
-    def devices(self) -> list[models.Device]:
-        return self._devices_cache
+    def _get_spotify_devices(self) -> list[models.SpotifyDevice]:
+        """Get Spotify devices from global device registry.
 
-    async def _refresh_cache(self) -> None:
-        """Refresh the in-memory caches for playlists and devices.
-
-        Fetches current user playlists and available devices from Spotify API.
-        For devices, parses the naming convention 'room-name' and creates/updates
-        database entries with room associations. Runs as a background task.
-
-        Note:
-            Device name format must be 'room-devicename' for proper room association.
-            Devices with invalid names are logged and skipped.
+        Returns:
+            List of SpotifyDevice objects from the global registry.
         """
-        try:
-            # AIDEV-NOTE: Sort by ID for consistent ordering in UI responses
-            self._playlists_cache = sorted(self.sp.current_user_playlists()["items"], key=lambda x: x["id"])
-            self._devices_cache = []
-            spotify_devices = sorted(self.sp.devices()["devices"], key=lambda x: x["id"])
-
-            async with AsyncSession(self.db_engine) as session:
-                for device in spotify_devices:
-                    existing_device = (
-                        await session.exec(select(models.Device).where(models.Device.spotify_id == device["id"]))
-                    ).first()
-                    if not existing_device:
-                        try:
-                            # AIDEV-NOTE: Parse room-name format for automatic room association
-                            room, name = device["name"].split("-", 1)
-                            new_device = models.Device(spotify_id=device["id"], name=name, room=room.replace("_", ""))
-                            session.add(new_device)
-                            self._devices_cache.append(models.Device.model_validate(new_device.model_dump()))
-                        except ValueError:
-                            self.logger.error("Device name is broken, skipping device %s", device)
-                    else:
-                        self._devices_cache.append(models.Device.model_validate(existing_device.model_dump()))
-                await session.commit()
-            self.logger.info("Cache refreshed")
-        except Exception as e:
-            self.logger.error("Failed to refresh cache: %s", e)
+        devices = []
+        for global_device in self.global_devices:
+            if global_device.device_type and global_device.device_type.name == "spotify_device":
+                devices.append(models.SpotifyDevice.from_global_device(global_device))
+        return devices
 
     async def skill_preparations(self) -> None:
-        """Perform any additional skill preparations beyond constructor initialization."""
-        pass
+        """Perform skill preparations including device sync.
 
-    async def calculate_certainty(self, intent_analysis_result: commons.IntentAnalysisResult) -> float:
-        """Calculate skill certainty for handling the given intent.
-
-        Simple keyword-based certainty calculation. Returns maximum certainty
-        if 'spotify' is mentioned in the parsed nouns, otherwise no certainty.
-
-        Args:
-            intent_analysis_result: Parsed intent from voice command.
-
-        Returns:
-            1.0 if 'spotify' keyword found, 0.0 otherwise.
+        CRITICAL: Must call super().skill_preparations() to register skill
+        and device types with the global registry.
         """
-        if "spotify" in intent_analysis_result.nouns:
-            return 1.0
-        return 0
+        await super().skill_preparations()
+        await self._sync_spotify_devices()
+        await self._refresh_playlists()
+        self.logger.info(
+            "Skill preparations complete. %d devices loaded, %d playlists cached.",
+            len(self._get_spotify_devices()),
+            len(self._playlists_cache),
+        )
 
-    async def find_parameters(self, action: Action, intent_analysis_result: commons.IntentAnalysisResult) -> Parameters:
-        """Extract command parameters from the intent analysis result.
+    async def _refresh_playlists(self) -> None:
+        """Refresh the in-memory playlist cache from Spotify API."""
+        try:
+            playlists_response = await asyncio.to_thread(self.sp.current_user_playlists)
+            # AIDEV-NOTE: Sort by ID for consistent ordering in UI responses
+            self._playlists_cache = sorted(playlists_response.get("items", []), key=lambda x: x["id"])
+            self.logger.debug("Playlist cache refreshed with %d playlists", len(self._playlists_cache))
+        except Exception as e:
+            self.logger.error("Failed to refresh playlist cache: %s", e)
 
-        Parses numbers and their context from voice commands to extract
-        playlist IDs, device IDs, and volume levels based on the action type.
+    async def _sync_spotify_devices(self) -> None:
+        """Sync Spotify devices to global device registry.
 
-        Args:
-            action: The action being performed.
-            intent_analysis_result: Parsed intent containing numbers and context.
-
-        Returns:
-            Parameters object with extracted values and cached data.
-        """
-        parameters = Parameters()
-        parameters.playlists = self.playlists
-        parameters.devices = self.devices
-
-        if action == Action.PLAY_PLAYLIST:
-            # AIDEV-NOTE: Extract playlist and device numbers based on context words
-            for result in intent_analysis_result.numbers:
-                if result.previous_token:
-                    if "playlist" in result.previous_token:
-                        parameters.playlist_id = result.number_token
-                    if "device" in result.previous_token:
-                        parameters.device_id = result.number_token
-
-        elif action == Action.SET_VOLUME:
-            # AIDEV-NOTE: Look for "to" keyword before volume number
-            for result in intent_analysis_result.numbers:
-                if result.previous_token and "to" in result.previous_token:
-                    parameters.volume = result.number_token
-
-        return parameters
-
-    def get_playlist_id_by_index(self, index: int, playlists: list[dict[str, str]]) -> str | None:
-        """Get Spotify playlist ID by 1-based index.
-
-        Args:
-            index: 1-based playlist index from voice command.
-            playlists: List of playlist dictionaries from Spotify API.
-
-        Returns:
-            Spotify playlist ID string or None if index is invalid.
+        Fetches available devices from Spotify API and registers them
+        in the global device registry. Device names should follow the
+        format 'room-devicename' for automatic room association.
         """
         try:
-            return playlists[index - 1]["id"]
-        except IndexError:
-            self.logger.error("Invalid playlist index.")
-            return None
+            spotify_devices_response = await asyncio.to_thread(self.sp.devices)
+            spotify_devices = spotify_devices_response.get("devices", [])
 
-    def get_device_by_index(self, index: int, devices: list[models.Device]) -> models.Device | None:
-        """Get device by 1-based index.
+            for device in spotify_devices:
+                try:
+                    # AIDEV-NOTE: Parse room-name format for automatic room association
+                    room, name = device["name"].split("-", 1)
+                    room = room.replace("_", "")
 
-        Args:
-            index: 1-based device index from voice command.
-            devices: List of available devices.
+                    await self.register_device(
+                        device_type="spotify_device",
+                        name=name,
+                        pattern=[name.lower(), device["name"].lower()],
+                        room=room,
+                        device_attributes={
+                            "spotify_id": device["id"],
+                            "is_main": False,
+                            "default_volume": 55,
+                        },
+                    )
+                    self.logger.debug("Registered Spotify device: %s in room %s", name, room)
+                except ValueError:
+                    self.logger.warning("Device name format invalid (expected 'room-name'): %s", device["name"])
 
-        Returns:
-            Device model or None if index is invalid.
-        """
-        try:
-            return devices[index - 1]
-        except IndexError:
-            self.logger.error("Invalid device index.")
-            return None
+            self.logger.info("Synced %d Spotify devices to global registry", len(spotify_devices))
+        except Exception as e:
+            self.logger.error("Failed to sync Spotify devices: %s", e)
 
-    async def get_main_device(self, room: str) -> models.Device | None:
+    def _get_main_device(self, room: str) -> models.SpotifyDevice | None:
         """Find the main device for a specific room.
 
         Args:
             room: Room name to search for.
 
         Returns:
-            Main device for the room or None if not found.
+            Main SpotifyDevice for the room or first device in room if no main set.
         """
-        for device in self.devices:
+        devices = self._get_spotify_devices()
+
+        # First try to find a device marked as main
+        for device in devices:
             if device.is_main and device.room == room:
                 return device
+
+        # Fall back to first device in the room
+        for device in devices:
+            if device.room == room:
+                return device
+
         return None
 
-    def get_answer(self, action: Action, parameters: Parameters) -> str:
-        """Generate response text using Jinja2 templates.
+    def _get_device_by_index(self, index: int) -> models.SpotifyDevice | None:
+        """Get device by 1-based index.
 
         Args:
-            action: The action being performed.
+            index: 1-based device index from voice command.
+
+        Returns:
+            SpotifyDevice or None if index is invalid.
+        """
+        devices = self._get_spotify_devices()
+        try:
+            return devices[index - 1]
+        except IndexError:
+            self.logger.error("Invalid device index: %d", index)
+            return None
+
+    def _get_playlist_id_by_index(self, index: int) -> str | None:
+        """Get Spotify playlist ID by 1-based index.
+
+        Args:
+            index: 1-based playlist index from voice command.
+
+        Returns:
+            Spotify playlist ID string or None if index is invalid.
+        """
+        try:
+            return self.playlists[index - 1]["id"]
+        except IndexError:
+            self.logger.error("Invalid playlist index: %d", index)
+            return None
+
+    def _render_response(self, template_key: IntentType | str, parameters: Parameters) -> str:
+        """Render response using template for given intent type.
+
+        Args:
+            template_key: The intent type or string key to render response for.
             parameters: Command parameters for template context.
 
         Returns:
-            Rendered response text for MQTT transmission.
+            Rendered response text.
         """
-        return self.action_to_answer[action].render(
-            action=action,
-            parameters=parameters,
+        template = self.intent_to_template.get(template_key)
+        if template:
+            return template.render(
+                intent_type=template_key,
+                parameters=parameters,
+            )
+        self.logger.error("No template found for key: %s", template_key)
+        return "Sorry, I couldn't process your request."
+
+    async def process_request(self, intent_request: IntentRequest) -> None:
+        """Main request processing method - routes intent to appropriate handler.
+
+        Orchestrates the full command processing pipeline:
+        1. Extract intent type from classified intent
+        2. Route to appropriate intent handler
+        3. Handler extracts entities, controls devices, and sends response
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        classified_intent = intent_request.classified_intent
+        intent_type = classified_intent.intent_type
+
+        self.logger.debug(
+            "Processing intent %s with confidence %.2f",
+            intent_type,
+            classified_intent.confidence,
         )
 
-    async def start_spotify_playlist(self, device_spotify: models.Device, playlist_id: str) -> None:
+        # Route to appropriate handler
+        if intent_type == IntentType.MEDIA_PLAY:
+            await self._handle_media_play(intent_request)
+        elif intent_type == IntentType.MEDIA_STOP:
+            await self._handle_media_stop(intent_request)
+        elif intent_type == IntentType.MEDIA_NEXT:
+            await self._handle_media_next(intent_request)
+        elif intent_type == IntentType.MEDIA_VOLUME_SET:
+            await self._handle_volume_set(intent_request)
+        elif intent_type == IntentType.QUERY_LIST:
+            await self._handle_query_list(intent_request)
+        elif intent_type == IntentType.SYSTEM_HELP:
+            await self._handle_system_help(intent_request)
+        else:
+            self.logger.warning("Unsupported intent type: %s", intent_type)
+            await self.send_response(
+                "I'm not sure how to handle that request.",
+                client_request=intent_request.client_request,
+            )
+
+    async def _handle_media_play(self, intent_request: IntentRequest) -> None:
+        """Handle MEDIA_PLAY intent - start playlist or resume playback.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        classified_intent = intent_request.classified_intent
+        client_request = intent_request.client_request
+        current_room = client_request.room
+
+        # Extract entities
+        number_entities = classified_intent.entities.get("number", [])
+        device_entities = classified_intent.entities.get("device", [])
+        modifier_entities = classified_intent.entities.get("modifier", [])
+
+        # Check if this is a resume/continue request
+        is_resume = any(m.normalized_value.lower() in ("continue", "resume") for m in modifier_entities)
+
+        if is_resume:
+            await self._handle_continue_playback(intent_request)
+            return
+
+        # Extract playlist index from number entities
+        playlist_index = None
+        device_index = None
+        for entity in number_entities:
+            # Use metadata to determine context, or just take first number as playlist
+            if playlist_index is None:
+                playlist_index = int(entity.normalized_value)
+            elif device_index is None:
+                device_index = int(entity.normalized_value)
+
+        # Resolve target device
+        target_device = None
+        if device_index:
+            target_device = self._get_device_by_index(device_index)
+        elif device_entities:
+            # Try to find device by name
+            device_name = device_entities[0].normalized_value.lower()
+            for device in self._get_spotify_devices():
+                if device.name.lower() == device_name:
+                    target_device = device
+                    break
+        if not target_device:
+            target_device = self._get_main_device(current_room)
+
+        if not target_device:
+            await self.send_response("I couldn't find a Spotify device to play on.", client_request)
+            return
+
+        if playlist_index is None:
+            await self.send_response("Please specify which playlist to play.", client_request)
+            return
+
+        # Build parameters and send response
+        parameters = Parameters(
+            playlist_index=playlist_index,
+            playlists=self.playlists,
+            devices=self._get_spotify_devices(),
+            target_device=target_device,
+            current_room=current_room,
+        )
+
+        response = self._render_response(IntentType.MEDIA_PLAY, parameters)
+        self.add_task(self.send_response(response, client_request=client_request))
+
+        # Start playback
+        playlist_id = self._get_playlist_id_by_index(playlist_index)
+        if playlist_id:
+            self.add_task(self._start_spotify_playlist(target_device, playlist_id))
+
+    async def _handle_continue_playback(self, intent_request: IntentRequest) -> None:
+        """Handle continue/resume playback command.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        client_request = intent_request.client_request
+        current_room = client_request.room
+
+        main_device = self._get_main_device(current_room)
+        if not main_device:
+            await self.send_response(f"No Spotify device found in {current_room}.", client_request)
+            return
+
+        parameters = Parameters(
+            target_device=main_device,
+            current_room=current_room,
+            is_resume=True,
+            devices=self._get_spotify_devices(),
+        )
+
+        response = self._render_response("continue", parameters)
+        self.add_task(self.send_response(response, client_request=client_request))
+
+        # Execute continue action
+        try:
+            current_playback = await asyncio.to_thread(self.sp.current_playback)
+
+            if current_playback and current_playback.get("is_playing"):
+                current_device_id = current_playback["device"]["id"]
+                if main_device.spotify_id != current_device_id:
+                    # AIDEV-NOTE: Transfer active playback to room's main device
+                    await asyncio.to_thread(self.sp.transfer_playback, device_id=main_device.spotify_id)
+                    self.logger.info("Transferred playback to device '%s' in room '%s'", main_device.name, current_room)
+            else:
+                # Start/resume playback on main device
+                await asyncio.to_thread(self.sp.transfer_playback, device_id=main_device.spotify_id)
+                self.logger.info("Started playback on device '%s' in room '%s'", main_device.name, current_room)
+        except spotipy.SpotifyException as e:
+            self.logger.error("Spotify API error during continue: %s", e)
+
+    async def _handle_media_stop(self, intent_request: IntentRequest) -> None:
+        """Handle MEDIA_STOP intent - pause playback.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        client_request = intent_request.client_request
+
+        parameters = Parameters(
+            current_room=client_request.room,
+            devices=self._get_spotify_devices(),
+        )
+
+        response = self._render_response(IntentType.MEDIA_STOP, parameters)
+        self.add_task(self.send_response(response, client_request=client_request))
+
+        try:
+            await asyncio.to_thread(self.sp.pause_playback)
+            self.logger.info("Playback paused.")
+        except spotipy.SpotifyException as e:
+            self.logger.error("Spotify API error during stop: %s", e)
+
+    async def _handle_media_next(self, intent_request: IntentRequest) -> None:
+        """Handle MEDIA_NEXT intent - skip to next track.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        client_request = intent_request.client_request
+
+        parameters = Parameters(
+            current_room=client_request.room,
+            devices=self._get_spotify_devices(),
+        )
+
+        response = self._render_response(IntentType.MEDIA_NEXT, parameters)
+        self.add_task(self.send_response(response, client_request=client_request))
+
+        try:
+            await asyncio.to_thread(self.sp.next_track)
+            self.logger.info("Skipped to next track.")
+        except spotipy.SpotifyException as e:
+            self.logger.error("Spotify API error during next track: %s", e)
+
+    async def _handle_volume_set(self, intent_request: IntentRequest) -> None:
+        """Handle MEDIA_VOLUME_SET intent - set volume level.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        classified_intent = intent_request.classified_intent
+        client_request = intent_request.client_request
+
+        # Extract volume from number entities
+        number_entities = classified_intent.entities.get("number", [])
+        volume = None
+        if number_entities:
+            volume = int(number_entities[0].normalized_value)
+
+        if volume is None:
+            await self.send_response("Please specify the volume level.", client_request)
+            return
+
+        # AIDEV-NOTE: Critical safety limit - never exceed MAX_VOLUME_LIMIT
+        final_volume = min(volume, MAX_VOLUME_LIMIT)
+
+        parameters = Parameters(
+            volume=final_volume,
+            current_room=client_request.room,
+            devices=self._get_spotify_devices(),
+        )
+
+        response = self._render_response(IntentType.MEDIA_VOLUME_SET, parameters)
+        self.add_task(self.send_response(response, client_request=client_request))
+
+        try:
+            await asyncio.to_thread(self.sp.volume, volume_percent=final_volume)
+            self.logger.info("Spotify volume set to %d%%", final_volume)
+        except spotipy.SpotifyException as e:
+            self.logger.error("Spotify API error during volume set: %s", e)
+
+    async def _handle_query_list(self, intent_request: IntentRequest) -> None:
+        """Handle QUERY_LIST intent - list playlists or devices.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        classified_intent = intent_request.classified_intent
+        client_request = intent_request.client_request
+
+        # Determine what to list based on entities or raw text
+        device_entities = classified_intent.entities.get("device", [])
+        raw_text = classified_intent.raw_text.lower()
+
+        parameters = Parameters(
+            playlists=self.playlists,
+            devices=self._get_spotify_devices(),
+            current_room=client_request.room,
+        )
+
+        # AIDEV-NOTE: Differentiate between list playlists and list devices
+        if device_entities or "device" in raw_text:
+            response = self._render_response("list_devices", parameters)
+        else:
+            response = self._render_response("list_playlists", parameters)
+
+        await self.send_response(response, client_request=client_request)
+
+    async def _handle_system_help(self, intent_request: IntentRequest) -> None:
+        """Handle SYSTEM_HELP intent - show available commands.
+
+        Args:
+            intent_request: The intent request with classified intent and client request.
+        """
+        client_request = intent_request.client_request
+
+        parameters = Parameters(
+            current_room=client_request.room,
+            devices=self._get_spotify_devices(),
+        )
+
+        response = self._render_response(IntentType.SYSTEM_HELP, parameters)
+        await self.send_response(response, client_request=client_request)
+
+    async def _start_spotify_playlist(self, device: models.SpotifyDevice, playlist_id: str) -> None:
         """Start playlist playback on a specific device with optimal settings.
 
         Initiates playlist playback, waits for device activation, then applies
-        the device's default volume and enables shuffle mode for better experience.
+        the device's default volume and enables shuffle mode.
 
         Args:
-            device_spotify: Target device for playback.
+            device: Target SpotifyDevice for playback.
             playlist_id: Spotify playlist ID to play.
-
-        Note:
-            Includes a 3-second delay to allow device activation before
-            applying volume and shuffle settings.
         """
         try:
             await asyncio.to_thread(
                 self.sp.start_playback,
-                device_id=device_spotify.spotify_id,
+                device_id=device.spotify_id,
                 context_uri=f"spotify:playlist:{playlist_id}",
             )
             # AIDEV-NOTE: Critical timing - device needs activation time before volume/shuffle
             await asyncio.sleep(3.0)
-            await asyncio.to_thread(self.sp.volume, volume_percent=device_spotify.default_volume)
+            await asyncio.to_thread(self.sp.volume, volume_percent=device.default_volume)
             await asyncio.to_thread(self.sp.shuffle, state=True)
-            self.logger.info("Started playlist '%s' on device '%s'", playlist_id, device_spotify.name)
+            self.logger.info("Started playlist '%s' on device '%s'", playlist_id, device.name)
         except spotipy.SpotifyException as e:
-            self.logger.error("Failed to start playlist '%s' on device '%s': %s", playlist_id, device_spotify.name, e)
+            self.logger.error("Failed to start playlist '%s' on device '%s': %s", playlist_id, device.name, e)
         except Exception as e:
             self.logger.error(
                 "Unexpected error while starting playlist '%s' on device '%s': %s",
                 playlist_id,
-                device_spotify.name,
+                device.name,
                 e,
                 exc_info=True,
             )
-
-    async def process_request(self, intent_analysis_result: commons.IntentAnalysisResult) -> None:
-        """Process incoming voice command and execute corresponding Spotify action.
-
-        Main entry point for command processing. Parses the command text to identify
-        the action, extracts parameters, generates a response, and executes the action.
-
-        Args:
-            intent_analysis_result: Parsed voice command with intent analysis.
-
-        Note:
-            Sends immediate response via MQTT before executing the action to provide
-            quick user feedback while Spotify API calls complete.
-        """
-        action = Action.find_matching_action(intent_analysis_result.client_request.text)
-        if action is None:
-            self.logger.error("Unrecognized action in text: %s", intent_analysis_result.client_request.text)
-            return
-
-        parameters = await self.find_parameters(action, intent_analysis_result=intent_analysis_result)
-        if parameters is None:
-            self.logger.error("No parameters found for the action.")
-            return
-
-        # AIDEV-NOTE: Send response immediately for better UX while API calls execute
-        answer = self.get_answer(action, parameters)
-        self.add_task(self.send_response(answer, client_request=intent_analysis_result.client_request))
-
-        try:
-            await self._execute_action(action, parameters, intent_analysis_result)
-        except spotipy.SpotifyException as e:
-            self.logger.error("Spotify API error during '%s': %s", action.name, e)
-        except Exception as e:
-            self.logger.error("Unexpected error during '%s': %s", action.name, e, exc_info=True)
-
-    async def _execute_action(
-        self, action: Action, parameters: Parameters, intent_analysis_result: commons.IntentAnalysisResult
-    ) -> None:
-        """Execute the specific action based on the identified command.
-
-        Dispatches to appropriate handler methods based on the action type.
-        Actions that don't require Spotify API calls (like LIST commands) are
-        handled purely through template responses.
-
-        Args:
-            action: The action to execute.
-            parameters: Extracted command parameters.
-            intent_analysis_result: Original intent analysis for context.
-        """
-        # AIDEV-NOTE: Only actions requiring API calls are handled here
-        if action == Action.CONTINUE:
-            await self._handle_continue_action(intent_analysis_result.client_request.room)
-        elif action == Action.PLAY_PLAYLIST:
-            await self._handle_play_playlist_action(parameters, intent_analysis_result.client_request.room)
-        elif action == Action.SET_VOLUME:
-            await self._handle_set_volume_action(parameters)
-        elif action == Action.STOP_PLAYBACK:
-            await self._handle_stop_playback_action()
-        elif action == Action.NEXT_TRACK:
-            await self._handle_next_track_action()
-
-    async def _handle_continue_action(self, room: str) -> None:
-        """Handle continue/resume playback command for a specific room.
-
-        Intelligently manages playback continuation by either transferring
-        existing playback to the room's main device or starting fresh playback.
-
-        Args:
-            room: Target room for playback continuation.
-
-        Note:
-            Checks current playback state and transfers if playing elsewhere,
-            or starts new playback if stopped.
-        """
-        current_playback = await asyncio.to_thread(self.sp.current_playback)
-        main_device = await self.get_main_device(room)
-
-        if current_playback and current_playback["is_playing"]:
-            current_device_id = current_playback["device"]["id"]
-            if main_device and main_device.spotify_id != current_device_id:
-                # AIDEV-NOTE: Transfer active playback to room's main device
-                await asyncio.to_thread(self.sp.transfer_playback, device_id=main_device.spotify_id)
-                self.logger.info("Transferred playback to device '%s' in room '%s'", main_device.name, room)
-            else:
-                self.logger.info("Playback is already on the correct device in room '%s'", room)
-        elif main_device:
-            # AIDEV-NOTE: Start playback if nothing is currently playing
-            await asyncio.to_thread(self.sp.start_playback, device_id=main_device.spotify_id)
-            self.logger.info("Started playback on device '%s' in room '%s'", main_device.name, room)
-        else:
-            self.logger.error("No main device found in room '%s'", room)
-
-    async def _handle_play_playlist_action(self, parameters: Parameters, room: str) -> None:
-        """Handle playlist playback command with device selection.
-
-        Starts playlist playback on either a specified device or the room's main device.
-        Validates playlist and device indices before initiating playback.
-
-        Args:
-            parameters: Command parameters with playlist/device IDs.
-            room: Current room for fallback device selection.
-        """
-        if parameters.device_id:
-            device_spotify = self.get_device_by_index(parameters.device_id, parameters.devices)
-        else:
-            # AIDEV-NOTE: Default to room's main device if no specific device requested
-            device_spotify = await self.get_main_device(room)
-
-        if parameters.playlist_id is not None and device_spotify:
-            playlist_id = self.get_playlist_id_by_index(parameters.playlist_id, parameters.playlists)
-            if playlist_id:
-                await self.start_spotify_playlist(device_spotify=device_spotify, playlist_id=playlist_id)
-            else:
-                self.logger.error("Playlist ID '%s' not found in playlists.", parameters.playlist_id)
-        else:
-            self.logger.error("Device ID '%s' or main device not found.", parameters.device_id)
-
-    async def _handle_set_volume_action(self, parameters: Parameters) -> None:
-        """Handle volume adjustment command with safety limits.
-
-        Args:
-            parameters: Command parameters containing target volume.
-
-        Note:
-            Volume is capped at MAX_VOLUME_LIMIT for hearing protection.
-        """
-        if parameters.volume is not None:
-            # AIDEV-NOTE: Critical safety limit - never exceed MAX_VOLUME_LIMIT
-            final_volume = parameters.volume if parameters.volume < MAX_VOLUME_LIMIT else MAX_VOLUME_LIMIT
-            await asyncio.to_thread(self.sp.volume, volume_percent=final_volume)
-            self.logger.info("Spotify volume set to %d%%", final_volume)
-        else:
-            self.logger.error("No volume level provided in the request.")
-
-    async def _handle_stop_playback_action(self) -> None:
-        """Handle stop/pause playback command.
-
-        Pauses current Spotify playback across all devices.
-        """
-        await asyncio.to_thread(self.sp.pause_playback)
-        self.logger.info("Playback paused.")
-
-    async def _handle_next_track_action(self) -> None:
-        """Handle next track/skip command.
-
-        Advances to the next track in the current playback context.
-        """
-        await asyncio.to_thread(self.sp.next_track)
-        self.logger.info("Skipped to next track.")

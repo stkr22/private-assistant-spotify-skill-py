@@ -1,47 +1,53 @@
-"""Database models for the Spotify skill.
+"""Database models and helpers for the Spotify skill.
 
-This module defines SQLModel classes for database persistence.
+This module provides helper classes for working with Spotify devices
+from the global device registry.
 """
 
-from sqlmodel import Field, SQLModel
+from private_assistant_commons.database import GlobalDevice
+from pydantic import BaseModel
 
 
-class TokenCache(SQLModel, table=True):
-    """Database model for storing Spotify OAuth tokens.
+class SpotifyDevice(BaseModel):
+    """Helper class for Spotify device data extracted from GlobalDevice.
 
-    Used by Spotipy's cache handler to maintain authentication state
-    across application restarts in a stateless deployment environment.
-
-    Attributes:
-        id: Primary key for the token record.
-        token: JSON string containing the OAuth token data.
-    """
-
-    id: int | None = Field(default=None, primary_key=True)
-    token: str
-
-
-class Device(SQLModel, table=True):
-    """Database model for Spotify device management.
-
-    Represents a Spotify-compatible device with room association
-    and playback preferences. Devices are discovered from Spotify API
-    and enhanced with room-specific metadata.
+    Provides a convenient interface for accessing Spotify-specific device
+    attributes stored in the global device registry.
 
     Attributes:
-        id: Primary key for the device record.
-        spotify_id: Unique identifier from Spotify API.
-        name: Human-readable device name (parsed from Spotify device name).
-        room: Room location (parsed from device name format 'room-name').
-        is_main: Whether this device is the primary device for its room.
-        default_volume: Default volume level (0-100) for this device.
-        ip: Optional IP address for direct device communication.
+        global_device: Reference to the underlying GlobalDevice.
+        spotify_id: Spotify API device identifier.
+        name: Device display name.
+        room: Room where the device is located.
+        is_main: Whether this is the primary device for the room.
+        default_volume: Default playback volume (0-100).
     """
 
-    id: int | None = Field(default=None, primary_key=True)
+    global_device: GlobalDevice
     spotify_id: str
     name: str
     room: str
     is_main: bool = False
     default_volume: int = 55
-    ip: str | None = None
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    @classmethod
+    def from_global_device(cls, global_device: GlobalDevice) -> "SpotifyDevice":
+        """Create a SpotifyDevice from a GlobalDevice.
+
+        Args:
+            global_device: The GlobalDevice from the registry.
+
+        Returns:
+            SpotifyDevice with extracted attributes.
+        """
+        attrs = global_device.device_attributes or {}
+        return cls(
+            global_device=global_device,
+            spotify_id=attrs.get("spotify_id", ""),
+            name=global_device.name,
+            room=global_device.room.name if global_device.room else "",
+            is_main=attrs.get("is_main", False),
+            default_volume=attrs.get("default_volume", 55),
+        )

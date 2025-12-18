@@ -1,7 +1,7 @@
-{% if parameters.playlist_id is not none and parameters.playlist_id - 1 | int < parameters.playlists | length -%}
-    {% set playlist_name = parameters.playlists[parameters.playlist_id - 1 | int].name -%}
-    {% if parameters.device_id is not none -%}
-        Started playing playlist {{ playlist_name }} on device {{ parameters.device_id }}.
+{% if parameters.playlist_index is not none and parameters.playlist_index - 1 | int < parameters.playlists | length -%}
+    {% set playlist_name = parameters.playlists[parameters.playlist_index - 1 | int].name -%}
+    {% if parameters.target_device is not none -%}
+        Started playing playlist {{ playlist_name }} on {{ parameters.target_device.name }}.
     {% else -%}
         Started playing playlist {{ playlist_name }} on the main device.
     {% endif -%}

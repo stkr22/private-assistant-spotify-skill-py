@@ -1,20 +1,103 @@
+"""Tests for the Spotify skill with intent-based architecture."""
+
 import unittest
+import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
 import jinja2
 import spotipy
-from private_assistant_commons import messages
+from private_assistant_commons import ClassifiedIntent, ClientRequest, Entity, IntentRequest, IntentType
+from private_assistant_commons.database import GlobalDevice
 
 from private_assistant_spotify_skill import models
-from private_assistant_spotify_skill.spotify_skill import Action, Parameters, SpotifySkill
+from private_assistant_spotify_skill.spotify_skill import Parameters, SpotifySkill, SpotifySkillDependencies
+
+
+def create_mock_intent_request(
+    intent_type: IntentType,
+    room: str = "living_room",
+    entities: dict | None = None,
+    raw_text: str = "",
+    confidence: float = 0.9,
+) -> IntentRequest:
+    """Helper to create mock IntentRequest objects for testing."""
+    if entities is None:
+        entities = {}
+
+    # Convert entity dicts to Entity objects
+    processed_entities: dict[str, list[Entity]] = {}
+    for key, values in entities.items():
+        processed_entities[key] = [
+            Entity(
+                id=uuid.uuid4(),
+                type=key,
+                raw_text=str(v),
+                normalized_value=str(v),
+                confidence=0.9,
+                metadata={},
+            )
+            for i, v in enumerate(values)
+        ]
+
+    mock_classified_intent = Mock(spec=ClassifiedIntent)
+    mock_classified_intent.intent_type = intent_type
+    mock_classified_intent.confidence = confidence
+    mock_classified_intent.entities = processed_entities
+    mock_classified_intent.raw_text = raw_text
+
+    mock_client_request = Mock(spec=ClientRequest)
+    mock_client_request.room = room
+    mock_client_request.text = raw_text
+
+    mock_intent_request = Mock(spec=IntentRequest)
+    mock_intent_request.classified_intent = mock_classified_intent
+    mock_intent_request.client_request = mock_client_request
+
+    return mock_intent_request
+
+
+def create_mock_spotify_device(
+    name: str = "Speaker",
+    room: str = "living_room",
+    spotify_id: str = "spotify_device_123",
+    is_main: bool = False,
+    default_volume: int = 55,
+) -> models.SpotifyDevice:
+    """Helper to create mock SpotifyDevice objects."""
+    mock_global_device = Mock(spec=GlobalDevice)
+    mock_global_device.name = name
+    mock_global_device.room = Mock()
+    mock_global_device.room.name = room
+    mock_global_device.device_attributes = {
+        "spotify_id": spotify_id,
+        "is_main": is_main,
+        "default_volume": default_volume,
+    }
+    mock_global_device.device_type = Mock()
+    mock_global_device.device_type.name = "spotify_device"
+
+    return models.SpotifyDevice(
+        global_device=mock_global_device,
+        spotify_id=spotify_id,
+        name=name,
+        room=room,
+        is_main=is_main,
+        default_volume=default_volume,
+    )
 
 
 class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
+    """Test cases for SpotifySkill with intent-based architecture."""
+
+    async def asyncSetUp(self) -> None:
+        """Set up test fixtures."""
         self.mock_mqtt_client = Mock()
         self.mock_config = Mock()
+        # AIDEV-NOTE: BaseSkill uses client_id for SkillContext/MetricsCollector (Pydantic models)
+        self.mock_config.client_id = "test_spotify_skill"
         self.mock_sp_oauth = Mock()
-        self.mock_spotify = AsyncMock(spec=spotipy.Spotify)
+        self.mock_spotify = Mock(spec=spotipy.Spotify)
+        self.mock_db_engine = Mock()
         self.mock_template_env = jinja2.Environment(
             loader=jinja2.PackageLoader(
                 "private_assistant_spotify_skill",
@@ -30,201 +113,301 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
         self.mock_task_group.create_task = Mock(return_value=self.mock_task)
         self.mock_logger = Mock()
 
+        # Create dependencies container
+        dependencies = SpotifySkillDependencies(
+            db_engine=self.mock_db_engine,
+            template_env=self.mock_template_env,
+            sp_oauth=self.mock_sp_oauth,
+        )
+
         # Patch spotipy.Spotify with a mock
         with patch("spotipy.Spotify", return_value=self.mock_spotify):
             self.skill = SpotifySkill(
                 config_obj=self.mock_config,
                 mqtt_client=self.mock_mqtt_client,
-                template_env=self.mock_template_env,
-                sp_oauth=self.mock_sp_oauth,
-                db_engine=Mock(),
+                dependencies=dependencies,
                 task_group=self.mock_task_group,
                 logger=self.mock_logger,
             )
 
-    async def test_find_parameters_for_set_volume(self):
-        mock_intent_result = Mock(spec=messages.IntentAnalysisResult)
-        mock_intent_result.numbers = [Mock(number_token=60, previous_token="to")]
+        # Set up mock devices in global_devices
+        self.mock_devices = [
+            create_mock_spotify_device(
+                name="Living Room Speaker",
+                room="living_room",
+                spotify_id="device_living_room",
+                is_main=True,
+            ),
+            create_mock_spotify_device(
+                name="Kitchen Speaker",
+                room="kitchen",
+                spotify_id="device_kitchen",
+                is_main=True,
+            ),
+        ]
 
-        # Mock the database session to return an empty list for devices
-        with patch("private_assistant_spotify_skill.spotify_skill.AsyncSession") as mock_session:
-            mock_session_instance = mock_session.return_value.__aenter__.return_value
-            mock_session_instance.execute.return_value.scalars.return_value.all.return_value = []
-
-            # Call the method under test
-            parameters = await self.skill.find_parameters(Action.SET_VOLUME, mock_intent_result)
-
-            # Check that the volume is correctly extracted
-            self.assertEqual(parameters.volume, 60)
-            # Ensure other parameters are set to default (empty lists)
-            self.assertEqual(parameters.devices, [])
-
-    async def test_process_request_set_volume(self):
-        # Mock the intent analysis result
-        mock_client_request = Mock()
-        mock_client_request.text = "Please set spotify volume to 60"
-
-        mock_intent_result = Mock(spec=messages.IntentAnalysisResult)
-        mock_intent_result.client_request = mock_client_request
-        mock_intent_result.numbers = [Mock(number_token=60, previous_token="to")]
-
-        # Set up mock template return value
-        mock_template = Mock()
-        mock_template.render.return_value = "Volume set to 60%"
-        self.skill.action_to_answer[Action.SET_VOLUME] = mock_template
-
-        with patch("private_assistant_spotify_skill.spotify_skill.AsyncSession") as mock_session:
-            mock_session_instance = mock_session.return_value.__aenter__.return_value
-            mock_session_instance.execute.return_value.scalars.return_value.all.return_value = []
-
-            with patch("asyncio.to_thread") as mock_to_thread:
-                mock_to_thread.return_value = None
-                await self.skill.process_request(mock_intent_result)
-
-                # Verify that the volume API was called with the correct volume
-                mock_to_thread.assert_called_with(self.mock_spotify.volume, volume_percent=60)
-
-    async def test_play_playlist_action_with_device(self):
-        # Mock the IntentAnalysisResult and its client_request attribute
-        mock_intent_result = Mock()
-        mock_intent_result.client_request = Mock()
-        mock_intent_result.client_request.room = "living_room"
-        mock_intent_result.client_request.text = "please play spotify playlist 1"
-
-        device = Mock(spec=models.Device)
-        device.id = 1
-        device.name = "living_room_speaker"
-        # Mock parameters with playlist and device information
-        parameters = Parameters(
-            playlist_id="1",
-            device_id=1,  # Using an integer to represent the device index
-            playlists=[{"id": "XX", "name": "Chill Vibes"}, {"id": "XXX", "name": "Workout Hits"}],
-            devices=[device],
+    async def test_process_request_volume_set(self) -> None:
+        """Test MEDIA_VOLUME_SET intent processing."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.MEDIA_VOLUME_SET,
+            room="living_room",
+            entities={"number": [60]},
+            raw_text="set spotify volume to 60",
         )
+
         with (
-            patch.object(self.skill, "find_parameters", return_value=parameters),
-            patch.object(self.skill, "get_device_by_index", return_value=device),
-            patch("asyncio.to_thread") as mock_to_thread,
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock),
+            patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
         ):
-            await self.skill.process_request(mock_intent_result)
-            # Verify that shuffle was called last (after volume call was removed pyamaha code)
-            mock_to_thread.assert_called_with(self.mock_spotify.shuffle, state=True)
+            await self.skill.process_request(intent_request)
 
-    async def test_continue_action_music_playing_on_correct_device(self):
-        # Mock the IntentAnalysisResult and its client_request attribute
-        mock_intent_result = Mock()
-        mock_intent_result.client_request = Mock()
-        mock_intent_result.client_request.room = "living_room"
-        mock_intent_result.client_request.text = "continue spotify"
+            # Verify volume was set to 60
+            mock_to_thread.assert_called_with(self.mock_spotify.volume, volume_percent=60)
 
-        # Mock the current playback to simulate music playing on the correct device
-        self.mock_spotify.current_playback.return_value = {
-            "is_playing": True,
-            "device": {"id": "device_id_living_room"},
+    async def test_process_request_volume_set_with_max_limit(self) -> None:
+        """Test MEDIA_VOLUME_SET intent respects MAX_VOLUME_LIMIT."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.MEDIA_VOLUME_SET,
+            room="living_room",
+            entities={"number": [100]},
+            raw_text="set spotify volume to 100",
+        )
+
+        with (
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock),
+            patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
+        ):
+            await self.skill.process_request(intent_request)
+
+            # Verify volume was capped at MAX_VOLUME_LIMIT (90)
+            mock_to_thread.assert_called_with(self.mock_spotify.volume, volume_percent=90)
+
+    async def test_process_request_media_stop(self) -> None:
+        """Test MEDIA_STOP intent processing."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.MEDIA_STOP,
+            room="living_room",
+            raw_text="stop spotify",
+        )
+
+        with (
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock),
+            patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
+        ):
+            await self.skill.process_request(intent_request)
+
+            # Verify pause_playback was called
+            mock_to_thread.assert_called_with(self.mock_spotify.pause_playback)
+
+    async def test_process_request_media_next(self) -> None:
+        """Test MEDIA_NEXT intent processing."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.MEDIA_NEXT,
+            room="living_room",
+            raw_text="next track spotify",
+        )
+
+        with (
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock),
+            patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
+        ):
+            await self.skill.process_request(intent_request)
+
+            # Verify next_track was called
+            mock_to_thread.assert_called_with(self.mock_spotify.next_track)
+
+    async def test_process_request_query_list_playlists(self) -> None:
+        """Test QUERY_LIST intent for playlists."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.QUERY_LIST,
+            room="living_room",
+            raw_text="list spotify playlists",
+        )
+
+        # Set up playlists cache
+        self.skill._playlists_cache = [
+            {"id": "playlist1", "name": "Chill Vibes"},
+            {"id": "playlist2", "name": "Workout Hits"},
+        ]
+
+        with (
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock) as mock_send_response,
+        ):
+            await self.skill.process_request(intent_request)
+
+            # Verify send_response was called
+            mock_send_response.assert_called_once()
+            # Check that response contains playlist info
+            call_args = mock_send_response.call_args
+            response_text = call_args[0][0]
+            self.assertIn("playlist", response_text.lower())
+
+    async def test_process_request_query_list_devices(self) -> None:
+        """Test QUERY_LIST intent for devices."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.QUERY_LIST,
+            room="living_room",
+            entities={"device": ["speaker"]},
+            raw_text="list spotify devices",
+        )
+
+        with (
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock) as mock_send_response,
+        ):
+            await self.skill.process_request(intent_request)
+
+            # Verify send_response was called
+            mock_send_response.assert_called_once()
+            # Check that response contains device info
+            call_args = mock_send_response.call_args
+            response_text = call_args[0][0]
+            self.assertIn("device", response_text.lower())
+
+    async def test_process_request_system_help(self) -> None:
+        """Test SYSTEM_HELP intent processing."""
+        intent_request = create_mock_intent_request(
+            intent_type=IntentType.SYSTEM_HELP,
+            room="living_room",
+            raw_text="spotify help",
+        )
+
+        with (
+            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
+            patch.object(self.skill, "send_response", new_callable=AsyncMock) as mock_send_response,
+        ):
+            await self.skill.process_request(intent_request)
+
+            # Verify send_response was called with help info
+            mock_send_response.assert_called_once()
+
+    async def test_get_main_device_found(self) -> None:
+        """Test _get_main_device returns correct device."""
+        with patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices):
+            device = self.skill._get_main_device("living_room")
+
+            self.assertIsNotNone(device)
+            assert device is not None  # Type narrowing for mypy
+            self.assertEqual(device.room, "living_room")
+            self.assertTrue(device.is_main)
+
+    async def test_get_main_device_not_found(self) -> None:
+        """Test _get_main_device returns None for unknown room."""
+        with patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices):
+            device = self.skill._get_main_device("unknown_room")
+
+            self.assertIsNone(device)
+
+    async def test_get_device_by_index_valid(self) -> None:
+        """Test _get_device_by_index with valid index."""
+        with patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices):
+            device = self.skill._get_device_by_index(1)
+
+            self.assertIsNotNone(device)
+            assert device is not None  # Type narrowing for mypy
+            self.assertEqual(device.name, "Living Room Speaker")
+
+    async def test_get_device_by_index_invalid(self) -> None:
+        """Test _get_device_by_index with invalid index."""
+        with patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices):
+            device = self.skill._get_device_by_index(999)
+
+            self.assertIsNone(device)
+
+    async def test_get_playlist_id_by_index_valid(self) -> None:
+        """Test _get_playlist_id_by_index with valid index."""
+        self.skill._playlists_cache = [
+            {"id": "playlist1", "name": "Chill Vibes"},
+            {"id": "playlist2", "name": "Workout Hits"},
+        ]
+
+        playlist_id = self.skill._get_playlist_id_by_index(1)
+        self.assertEqual(playlist_id, "playlist1")
+
+    async def test_get_playlist_id_by_index_invalid(self) -> None:
+        """Test _get_playlist_id_by_index with invalid index."""
+        self.skill._playlists_cache = [
+            {"id": "playlist1", "name": "Chill Vibes"},
+        ]
+
+        playlist_id = self.skill._get_playlist_id_by_index(999)
+        self.assertIsNone(playlist_id)
+
+
+class TestParameters(unittest.TestCase):
+    """Test cases for Parameters model."""
+
+    def test_parameters_defaults(self) -> None:
+        """Test Parameters model has correct defaults."""
+        params = Parameters()
+
+        self.assertIsNone(params.playlist_index)
+        self.assertEqual(params.playlists, [])
+        self.assertEqual(params.devices, [])
+        self.assertIsNone(params.target_device)
+        self.assertIsNone(params.volume)
+        self.assertEqual(params.current_room, "")
+        self.assertFalse(params.is_resume)
+
+    def test_parameters_with_values(self) -> None:
+        """Test Parameters model accepts values."""
+        mock_device = create_mock_spotify_device()
+        params = Parameters(
+            playlist_index=1,
+            playlists=[{"id": "123", "name": "Test"}],
+            devices=[mock_device],
+            target_device=mock_device,
+            volume=50,
+            current_room="bedroom",
+            is_resume=True,
+        )
+
+        self.assertEqual(params.playlist_index, 1)
+        self.assertEqual(len(params.playlists), 1)
+        self.assertEqual(len(params.devices), 1)
+        self.assertEqual(params.volume, 50)
+        self.assertEqual(params.current_room, "bedroom")
+        self.assertTrue(params.is_resume)
+
+
+class TestSpotifyDevice(unittest.TestCase):
+    """Test cases for SpotifyDevice model."""
+
+    def test_from_global_device(self) -> None:
+        """Test SpotifyDevice.from_global_device factory method."""
+        mock_global_device = Mock(spec=GlobalDevice)
+        mock_global_device.name = "Test Speaker"
+        mock_global_device.room = Mock()
+        mock_global_device.room.name = "bedroom"
+        mock_global_device.device_attributes = {
+            "spotify_id": "spotify_123",
+            "is_main": True,
+            "default_volume": 65,
         }
 
-        # Mock the parameters
-        parameters = Parameters(
-            playlist_id=None,
-            device_id=None,
-            playlists=[],
-            devices=[
-                models.Device(
-                    spotify_id="device_id_living_room", name="Living Room Speaker", room="living_room", is_main=True
-                )
-            ],
-        )
+        spotify_device = models.SpotifyDevice.from_global_device(mock_global_device)
 
-        with (
-            patch.object(self.skill, "find_parameters", return_value=parameters),
-            patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]),
-        ):
-            await self.skill.process_request(mock_intent_result)
+        self.assertEqual(spotify_device.name, "Test Speaker")
+        self.assertEqual(spotify_device.room, "bedroom")
+        self.assertEqual(spotify_device.spotify_id, "spotify_123")
+        self.assertTrue(spotify_device.is_main)
+        self.assertEqual(spotify_device.default_volume, 65)
 
-            # Verify that transfer_playback was not called since it's already on the correct device
-            self.mock_spotify.transfer_playback.assert_not_called()
+    def test_from_global_device_with_defaults(self) -> None:
+        """Test SpotifyDevice.from_global_device with missing attributes."""
+        mock_global_device = Mock(spec=GlobalDevice)
+        mock_global_device.name = "Test Speaker"
+        mock_global_device.room = Mock()
+        mock_global_device.room.name = "bedroom"
+        mock_global_device.device_attributes = {}
 
-    async def test_continue_action_transfer_playback(self):
-        # Mock the IntentAnalysisResult and its client_request attribute
-        mock_intent_result = Mock()
-        mock_intent_result.client_request = Mock()
-        mock_intent_result.client_request.room = "kitchen"
-        mock_intent_result.client_request.text = "continue spotify"
+        spotify_device = models.SpotifyDevice.from_global_device(mock_global_device)
 
-        # Mock the current playback to simulate music playing on a different device
-        self.mock_spotify.current_playback.return_value = {
-            "is_playing": True,
-            "device": {"id": "device_id_living_room"},
-        }
-
-        # Mock the parameters
-        parameters = Parameters(
-            playlist_id=None,
-            device_id=None,
-            playlists=[],
-            devices=[
-                models.Device(spotify_id="device_id_kitchen", name="Kitchen Speaker", room="kitchen", is_main=True)
-            ],
-        )
-
-        with (
-            patch.object(self.skill, "find_parameters", return_value=parameters),
-            patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]),
-            patch("asyncio.to_thread") as mock_to_thread,
-        ):
-            await self.skill.process_request(mock_intent_result)
-
-            # Verify that transfer_playback was called to the kitchen device
-            mock_to_thread.assert_called_with(self.mock_spotify.transfer_playback, device_id="device_id_kitchen")
-
-    async def test_continue_action_start_playback(self):
-        # Mock the IntentAnalysisResult and its client_request attribute
-        mock_intent_result = Mock()
-        mock_intent_result.client_request = Mock()
-        mock_intent_result.client_request.room = "bedroom"
-        mock_intent_result.client_request.text = "continue spotify"
-
-        # Mock the current playback to simulate no music playing
-        self.mock_spotify.current_playback.return_value = {"is_playing": False}
-
-        # Mock the parameters
-        parameters = Parameters(
-            playlist_id=None,
-            device_id=None,
-            playlists=[],
-            devices=[
-                models.Device(spotify_id="device_id_bedroom", name="Bedroom Speaker", room="bedroom", is_main=True)
-            ],
-        )
-
-        with (
-            patch.object(self.skill, "find_parameters", return_value=parameters),
-            patch.object(self.skill, "get_main_device", return_value=parameters.devices[0]),
-            patch("asyncio.to_thread") as mock_to_thread,
-        ):
-            await self.skill.process_request(mock_intent_result)
-
-            # Verify that start_playback was called on the main device in the bedroom
-            mock_to_thread.assert_called_with(self.mock_spotify.transfer_playback, device_id="device_id_bedroom")
-
-    async def test_continue_action_no_main_device_found(self):
-        # Mock the IntentAnalysisResult and its client_request attribute
-        mock_intent_result = Mock()
-        mock_intent_result.client_request = Mock()
-        mock_intent_result.client_request.room = "garage"
-        mock_intent_result.client_request.text = "continue spotify"
-
-        # Mock the current playback to simulate no music playing
-        self.mock_spotify.current_playback.return_value = {"is_playing": False}
-
-        # Mock the parameters
-        parameters = Parameters(playlist_id=None, device_id=None, playlists=[], devices=[])
-
-        with (
-            patch.object(self.skill, "find_parameters", return_value=parameters),
-            patch.object(self.skill, "get_main_device", return_value=None),
-        ):
-            await self.skill.process_request(mock_intent_result)
-
-            # Verify that start_playback was not called because no main device was found
-            self.mock_spotify.start_playback.assert_not_called()
+        self.assertEqual(spotify_device.spotify_id, "")
+        self.assertFalse(spotify_device.is_main)
+        self.assertEqual(spotify_device.default_volume, 55)
