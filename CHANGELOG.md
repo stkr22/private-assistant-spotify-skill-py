@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v2.0.0...v2.0.1) (2025-12-18)
+
+
+### Bug Fixes
+
+* :bug: add REDIS_USERNAME support for Redis ACL authentication ([6f029fc](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/6f029fc34605ecfed5183d8adf7aded96bc5f612))
+* :bug: add REDIS_USERNAME support for Redis ACL authentication ([b9491fd](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/b9491fd9d185ce1f35b7c840a8df3c5854043aa0))
+
 ## [2.0.0](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v1.3.0...v2.0.0) (2025-12-18)
 
 
