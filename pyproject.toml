@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.8.11,<0.9.0"]
+requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
 
 [project]
@@ -10,7 +10,7 @@ authors = [
     { name = "stkr22", email = "stkr22@github.com" }
 ]
 readme = "README.md"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 license-files = [
     "LICENSE",
 ]
@@ -25,14 +25,14 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "spotipy~=2.25.1",
     "private-assistant-commons~=3.6.0",
     "pydantic~=2.9.2",
     "sqlmodel~=0.0.24",
     "jinja2~=3.1.4",
-    "asyncpg~=0.29.0",
+    "asyncpg~=0.30.0",
     "psycopg[binary]~=3.2.9",
     "typer~=0.15.1"
 ]
@@ -49,15 +49,15 @@ Changelog = "https://github.com/stkr22/private-assistant-spotify-skill-py/blob/m
 
 [dependency-groups]
 dev = [
-    "ruff~=0.8.0",
+    "ruff~=0.14.1",
     "mypy~=1.17.0",
     "pytest~=8.4.1",
-    "pytest-cov~=6.0.0",
-    "types-pyyaml~=6.0.12.20240311",
-    "aiosqlite~=0.22.0",
+    "pytest-cov~=6.2.1",
     "pytest-xdist~=3.6.0",
     "coverage[toml]~=7.6.0",
-    "commitizen~=4.8.3",
+    "pytest-asyncio~=0.25.2",
+    "types-pyyaml~=6.0.12.20240311",
+    "aiosqlite~=0.22.0",
 ]
 
 [[tool.mypy.overrides]]
@@ -113,10 +113,3 @@ exclude_lines = [
     "def __repr__",
     "if __name__ == .__main__.:",
 ]
-
-[tool.commitizen]
-name = "cz_conventional_commits"
-tag_format = "v$version"
-version_scheme = "pep440"
-version_provider = "scm"
-update_changelog_on_bump = true
