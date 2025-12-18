@@ -31,22 +31,26 @@ class RedisSettings(BaseSettings):
     """Redis connection settings for OAuth token caching.
 
     Environment variables (with REDIS_ prefix):
-        REDIS_HOST: Redis server hostname (default: localhost).
+        REDIS_HOST: Redis server hostname (required).
         REDIS_PORT: Redis server port (default: 6379).
-        REDIS_PASSWORD: Redis password (optional, default: None).
+        REDIS_USERNAME: Redis username for ACL auth (optional).
+        REDIS_PASSWORD: Redis password (optional).
         REDIS_DB: Redis database number (default: 0).
     """
 
     model_config = SettingsConfigDict(env_prefix="REDIS_")
 
-    host: str = "localhost"
+    host: str
     port: int = 6379
+    username: str | None = None
     password: str | None = None
     db: int = 0
 
     @property
     def url(self) -> str:
         """Build Redis connection URL from components."""
+        if self.username and self.password:
+            return f"redis://{self.username}:{self.password}@{self.host}:{self.port}/{self.db}"
         if self.password:
             return f"redis://:{self.password}@{self.host}:{self.port}/{self.db}"
         return f"redis://{self.host}:{self.port}/{self.db}"
@@ -66,5 +70,5 @@ class SkillConfig(commons.SkillConfig):
 
     # AIDEV-NOTE: Using default_factory to delay instantiation until SkillConfig is created,
     # avoiding import-time validation errors when env vars are not yet set.
-    spotify: SpotifySettings = Field(default_factory=lambda: SpotifySettings())
-    redis: RedisSettings = Field(default_factory=lambda: RedisSettings())
+    spotify: SpotifySettings = Field(default_factory=SpotifySettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
