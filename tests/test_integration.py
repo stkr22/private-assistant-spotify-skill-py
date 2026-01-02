@@ -22,8 +22,8 @@ import aiomqtt
 import pytest
 import pytest_asyncio
 from private_assistant_commons import ClassifiedIntent, ClientRequest, Entity, EntityType, IntentRequest, IntentType
-from private_assistant_commons.database import DeviceType, GlobalDevice, PostgresConfig, Room, Skill
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from private_assistant_commons.database import DeviceType, GlobalDevice, Room, Skill, create_skill_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
 from private_assistant_spotify_skill.main import start_skill
@@ -43,9 +43,8 @@ OUTPUT_TOPIC = "assistant/output/text"
 @pytest_asyncio.fixture
 async def db_engine():
     """Create async database engine and initialize tables."""
-    # Use PostgresConfig from commons for consistent connection handling
-    postgres_config = PostgresConfig()
-    engine = create_async_engine(str(postgres_config.connection_string_async))
+    # Use create_skill_engine() for resilient connection handling in tests
+    engine = create_skill_engine()
 
     # Create all tables
     async with engine.begin() as conn:
@@ -84,14 +83,12 @@ async def mqtt_test_client(mqtt_config):
 def skill_config_file() -> pathlib.Path:
     """Create temporary YAML config file for the skill.
 
-    Note: Spotify and Redis settings are loaded from environment variables
-    with SPOTIFY_ and VALKEY_ prefixes respectively. These are set in the
+    Note: Spotify, Valkey, and MQTT settings are loaded from environment variables
+    with SPOTIFY_, VALKEY_, and MQTT_ prefixes respectively. These are set in the
     running_skill fixture.
     """
     config_content = """
 client_id: test_spotify_skill
-mqtt_server_host: mosquitto
-mqtt_server_port: 1883
 """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(config_content)
@@ -216,13 +213,15 @@ async def running_skill(
     # Wait for devices to be persisted
     await asyncio.sleep(0.5)
 
-    # Set Spotify and Redis environment variables (using env_prefix from pydantic-settings)
+    # Set Spotify, Valkey, and MQTT environment variables (using env_prefix from pydantic-settings)
     env_vars = {
         "SPOTIFY_CLIENT_ID": "test_client_id",
         "SPOTIFY_CLIENT_SECRET": "test_client_secret",
         "SPOTIFY_REDIRECT_URI": "http://localhost:8080/callback",
         "VALKEY_HOST": "redis",
         "VALKEY_PORT": "6379",
+        "MQTT_HOST": "mosquitto",
+        "MQTT_PORT": "1883",
     }
     original_env = {key: os.environ.get(key) for key in env_vars}
     for key, value in env_vars.items():

@@ -12,10 +12,9 @@ import jinja2
 import typer
 import valkey
 from private_assistant_commons import MqttConfig, SkillConfig, mqtt_connection_handler, skill_config, skill_logger
-from private_assistant_commons.database import PostgresConfig
+from private_assistant_commons.database import create_skill_engine
 from spotipy.cache_handler import RedisCacheHandler
 from spotipy.oauth2 import SpotifyOAuth
-from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 
 from private_assistant_spotify_skill import config, spotify_skill
@@ -47,8 +46,9 @@ async def start_skill(config_path: pathlib.Path) -> None:
     # AIDEV-NOTE: Load skill configuration from YAML (uses base commons.SkillConfig)
     config_obj = skill_config.load_config(config_path, SkillConfig)
 
-    # AIDEV-NOTE: Single async engine for skill database operations (passed to BaseSkill)
-    db_engine_async = create_async_engine(str(PostgresConfig().connection_string_async))
+    # AIDEV-NOTE: Create resilient database engine with connection pool management
+    # Uses create_skill_engine() for automatic connection health checks and recycling
+    db_engine_async = create_skill_engine()
 
     # AIDEV-NOTE: Create database tables on startup (global device registry tables from commons)
     async with db_engine_async.begin() as conn:
