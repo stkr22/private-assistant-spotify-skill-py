@@ -45,7 +45,7 @@ async def db_engine():
     """Create async database engine and initialize tables."""
     # Use PostgresConfig from commons for consistent connection handling
     postgres_config = PostgresConfig()
-    engine = create_async_engine(postgres_config.connection_string_async)
+    engine = create_async_engine(str(postgres_config.connection_string_async))
 
     # Create all tables
     async with engine.begin() as conn:
@@ -85,7 +85,7 @@ def skill_config_file() -> pathlib.Path:
     """Create temporary YAML config file for the skill.
 
     Note: Spotify and Redis settings are loaded from environment variables
-    with SPOTIFY_ and REDIS_ prefixes respectively. These are set in the
+    with SPOTIFY_ and VALKEY_ prefixes respectively. These are set in the
     running_skill fixture.
     """
     config_content = """
@@ -221,8 +221,8 @@ async def running_skill(
         "SPOTIFY_CLIENT_ID": "test_client_id",
         "SPOTIFY_CLIENT_SECRET": "test_client_secret",
         "SPOTIFY_REDIRECT_URI": "http://localhost:8080/callback",
-        "REDIS_HOST": "redis",
-        "REDIS_PORT": "6379",
+        "VALKEY_HOST": "redis",
+        "VALKEY_PORT": "6379",
     }
     original_env = {key: os.environ.get(key) for key in env_vars}
     for key, value in env_vars.items():
