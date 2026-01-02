@@ -4,8 +4,6 @@ This module extends the base skill configuration with Spotify-specific settings.
 Uses pydantic-settings with env_prefix for secure environment variable configuration.
 """
 
-import private_assistant_commons as commons
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,18 +25,18 @@ class SpotifySettings(BaseSettings):
     scope: str = "user-read-playback-state user-modify-playback-state playlist-read-private"
 
 
-class RedisSettings(BaseSettings):
-    """Redis connection settings for OAuth token caching.
+class ValkeySettings(BaseSettings):
+    """Valkey connection settings for OAuth token caching.
 
-    Environment variables (with REDIS_ prefix):
-        REDIS_HOST: Redis server hostname (required).
-        REDIS_PORT: Redis server port (default: 6379).
-        REDIS_USERNAME: Redis username for ACL auth (optional).
-        REDIS_PASSWORD: Redis password (optional).
-        REDIS_DB: Redis database number (default: 0).
+    Environment variables (with VALKEY_ prefix):
+        VALKEY_HOST: Valkey server hostname (required).
+        VALKEY_PORT: Valkey server port (default: 6379).
+        VALKEY_USERNAME: Valkey username for ACL auth (optional).
+        VALKEY_PASSWORD: Valkey password (optional).
+        VALKEY_DB: Valkey database number (default: 0).
     """
 
-    model_config = SettingsConfigDict(env_prefix="REDIS_")
+    model_config = SettingsConfigDict(env_prefix="VALKEY_")
 
     host: str
     port: int = 6379
@@ -46,29 +44,6 @@ class RedisSettings(BaseSettings):
     password: str | None = None
     db: int = 0
 
-    @property
-    def url(self) -> str:
-        """Build Redis connection URL from components."""
-        if self.username and self.password:
-            return f"redis://{self.username}:{self.password}@{self.host}:{self.port}/{self.db}"
-        if self.password:
-            return f"redis://:{self.password}@{self.host}:{self.port}/{self.db}"
-        return f"redis://{self.host}:{self.port}/{self.db}"
 
-
-class SkillConfig(commons.SkillConfig):
-    """Configuration class for Spotify skill settings.
-
-    Combines base skill configuration with Spotify and Redis settings.
-    Spotify and Redis credentials are loaded from environment variables
-    with their respective prefixes (SPOTIFY_, REDIS_).
-
-    Attributes:
-        spotify: Spotify API credentials and OAuth settings.
-        redis: Redis connection settings for token caching.
-    """
-
-    # AIDEV-NOTE: Using default_factory to delay instantiation until SkillConfig is created,
-    # avoiding import-time validation errors when env vars are not yet set.
-    spotify: SpotifySettings = Field(default_factory=SpotifySettings)
-    redis: RedisSettings = Field(default_factory=RedisSettings)
+# AIDEV-NOTE: SkillConfig is now imported directly from commons
+# Spotify and Valkey settings are initialized separately in main.py
