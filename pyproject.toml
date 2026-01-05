@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "private-assistant-spotify-skill"
-version = "2.1.0"
+version = "2.1.1"
 description = "This package allows to use spotify within the private assistant ecosystem."
 authors = [
     { name = "stkr22", email = "stkr22@github.com" }
