@@ -28,7 +28,7 @@ classifiers = [
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "spotipy~=2.25.2",
-    "private-assistant-commons~=5.4.0",
+    "private-assistant-commons~=5.5.0",
     "jinja2~=3.1.4",
     "valkey[libvalkey]~=6.1.1",
     "typer~=0.21.0"
