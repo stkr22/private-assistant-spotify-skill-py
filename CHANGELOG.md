@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v2.1.0...v2.1.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* fixing spotify  device duplication bug ([53529ef](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/53529ef5e2c1be6c6ee5ba015a471a6db277eae0))
+
 ## [2.1.0](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v2.0.1...v2.1.0) (2026-01-02)
 
 
