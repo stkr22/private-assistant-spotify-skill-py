@@ -34,6 +34,7 @@ class SpotifySkillDependencies:
         db_engine: Async SQLAlchemy engine for database operations.
         template_env: Jinja2 environment for response template rendering.
         sp_oauth: Configured Spotify OAuth manager for API authentication.
+
     """
 
     db_engine: AsyncEngine
@@ -55,6 +56,7 @@ class Parameters(BaseModel):
         volume: Target volume level (0-100) for volume commands.
         current_room: Room where the request originated.
         is_resume: Whether this is a resume/continue operation.
+
     """
 
     playlist_index: int | None = None
@@ -78,7 +80,16 @@ class SpotifySkill(commons.BaseSkill):
         db_engine: Async database engine for persistence.
         template_env: Jinja2 environment for response generation.
         intent_to_template: Mapping of intent types to response templates.
+
     """
+
+    help_text = (
+        "Available commands:\n"
+        "- List playlists\n"
+        "- List devices\n"
+        "- Play playlist <playlist_id> on device <device_name>\n"
+        "- Stop playback on device <device_name>"
+    )
 
     def __init__(
         self,
@@ -96,6 +107,7 @@ class SpotifySkill(commons.BaseSkill):
             dependencies: Injected dependencies (database, templates, OAuth).
             task_group: AsyncIO task group for background operations.
             logger: Logger instance for skill operations.
+
         """
         super().__init__(
             config_obj=config_obj,
@@ -115,8 +127,7 @@ class SpotifySkill(commons.BaseSkill):
             IntentType.MEDIA_STOP: 0.8,
             IntentType.MEDIA_NEXT: 0.8,
             IntentType.MEDIA_VOLUME_SET: 0.8,
-            IntentType.QUERY_LIST: 0.7,
-            IntentType.SYSTEM_HELP: 0.7,
+            IntentType.MEDIA_QUERY: 0.7,
         }
 
         # AIDEV-NOTE: Device type for global registry
@@ -134,9 +145,9 @@ class SpotifySkill(commons.BaseSkill):
 
         Raises:
             RuntimeError: If critical templates cannot be loaded.
+
         """
         template_mappings: dict[IntentType | str, str] = {
-            IntentType.SYSTEM_HELP: "help.j2",
             IntentType.MEDIA_PLAY: "playback_started.j2",
             IntentType.MEDIA_STOP: "playback_stopped.j2",
             IntentType.MEDIA_NEXT: "next_track.j2",
@@ -169,6 +180,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Returns:
             List of SpotifyDevice objects from the global registry.
+
         """
         devices = []
         for global_device in self.global_devices:
@@ -245,6 +257,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Returns:
             Main SpotifyDevice for the room or first device in room if no main set.
+
         """
         devices = self._get_spotify_devices()
 
@@ -268,6 +281,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Returns:
             SpotifyDevice or None if index is invalid.
+
         """
         devices = self._get_spotify_devices()
         try:
@@ -284,6 +298,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Returns:
             Spotify playlist ID string or None if index is invalid.
+
         """
         try:
             return self.playlists[index - 1]["id"]
@@ -300,6 +315,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Returns:
             Rendered response text.
+
         """
         template = self.intent_to_template.get(template_key)
         if template:
@@ -311,7 +327,7 @@ class SpotifySkill(commons.BaseSkill):
         return "Sorry, I couldn't process your request."
 
     async def process_request(self, intent_request: IntentRequest) -> None:
-        """Main request processing method - routes intent to appropriate handler.
+        """Route intent to appropriate handler and orchestrate command processing.
 
         Orchestrates the full command processing pipeline:
         1. Extract intent type from classified intent
@@ -320,6 +336,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         classified_intent = intent_request.classified_intent
         intent_type = classified_intent.intent_type
@@ -339,10 +356,8 @@ class SpotifySkill(commons.BaseSkill):
             await self._handle_media_next(intent_request)
         elif intent_type == IntentType.MEDIA_VOLUME_SET:
             await self._handle_volume_set(intent_request)
-        elif intent_type == IntentType.QUERY_LIST:
+        elif intent_type == IntentType.MEDIA_QUERY:
             await self._handle_query_list(intent_request)
-        elif intent_type == IntentType.SYSTEM_HELP:
-            await self._handle_system_help(intent_request)
         else:
             self.logger.warning("Unsupported intent type: %s", intent_type)
             await self.send_response(
@@ -355,6 +370,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         classified_intent = intent_request.classified_intent
         client_request = intent_request.client_request
@@ -426,6 +442,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         client_request = intent_request.client_request
         current_room = client_request.room
@@ -467,6 +484,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         client_request = intent_request.client_request
 
@@ -489,6 +507,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         client_request = intent_request.client_request
 
@@ -511,6 +530,7 @@ class SpotifySkill(commons.BaseSkill):
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         classified_intent = intent_request.classified_intent
         client_request = intent_request.client_request
@@ -544,10 +564,11 @@ class SpotifySkill(commons.BaseSkill):
             self.logger.error("Spotify API error during volume set: %s", e)
 
     async def _handle_query_list(self, intent_request: IntentRequest) -> None:
-        """Handle QUERY_LIST intent - list playlists or devices.
+        """Handle MEDIA_QUERY intent - list playlists or devices.
 
         Args:
             intent_request: The intent request with classified intent and client request.
+
         """
         classified_intent = intent_request.classified_intent
         client_request = intent_request.client_request
@@ -570,22 +591,6 @@ class SpotifySkill(commons.BaseSkill):
 
         await self.send_response(response, client_request=client_request)
 
-    async def _handle_system_help(self, intent_request: IntentRequest) -> None:
-        """Handle SYSTEM_HELP intent - show available commands.
-
-        Args:
-            intent_request: The intent request with classified intent and client request.
-        """
-        client_request = intent_request.client_request
-
-        parameters = Parameters(
-            current_room=client_request.room,
-            devices=self._get_spotify_devices(),
-        )
-
-        response = self._render_response(IntentType.SYSTEM_HELP, parameters)
-        await self.send_response(response, client_request=client_request)
-
     async def _start_spotify_playlist(self, device: models.SpotifyDevice, playlist_id: str) -> None:
         """Start playlist playback on a specific device with optimal settings.
 
@@ -595,6 +600,7 @@ class SpotifySkill(commons.BaseSkill):
         Args:
             device: Target SpotifyDevice for playback.
             playlist_id: Spotify playlist ID to play.
+
         """
         try:
             await asyncio.to_thread(

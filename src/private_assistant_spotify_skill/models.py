@@ -21,6 +21,7 @@ class SpotifyDevice(BaseModel):
         room: Room where the device is located.
         is_main: Whether this is the primary device for the room.
         default_volume: Default playback volume (0-100).
+
     """
 
     global_device: GlobalDevice
@@ -41,6 +42,7 @@ class SpotifyDevice(BaseModel):
 
         Returns:
             SpotifyDevice with extracted attributes.
+
         """
         attrs = global_device.device_attributes or {}
         return cls(
