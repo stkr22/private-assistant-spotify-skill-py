@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v2.1.1...v2.2.0) (2026-01-31)
+
+
+### Features
+
+* :arrow_up: update to latest copier template and migrate help system ([6895855](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/68958556f2e1ffa0490617c33b96d8e38dd2108f))
+* :arrow_up: update to latest copier template and migrate help system ([1a990e6](https://github.com/stkr22/private-assistant-spotify-skill-py/commit/1a990e6dadafd1494f6c2f53219d6e89695ae91f))
+
 ## [2.1.1](https://github.com/stkr22/private-assistant-spotify-skill-py/compare/v2.1.0...v2.1.1) (2026-01-05)
 
 
