@@ -37,7 +37,7 @@ services:
 
   # PostgreSQL database for device registry
   postgres:
-    image: docker.io/postgres:18.1-trixie
+    image: docker.io/postgres:18.1-trixie@sha256:5773fe724c49c42a7a9ca70202e11e1dff21fb7235b335a73f39297d200b73a2
     container_name: spotify-skill-postgres
     environment:
       POSTGRES_USER: assistant
@@ -53,7 +53,7 @@ services:
 
   # Eclipse Mosquitto MQTT broker
   mosquitto:
-    image: docker.io/eclipse-mosquitto:2.0.22
+    image: docker.io/eclipse-mosquitto:2.0.22@sha256:e011726bdfa757011bc8b8716e03b7c35d2c3f623d9f658c2c6bf66e909ea42e
     container_name: spotify-skill-mosquitto
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
@@ -67,7 +67,7 @@ services:
 
   # VALKEY for OAuth token caching
   VALKEY:
-    image: docker.io/valkey/valkey:9.0.1
+    image: docker.io/valkey/valkey:9.0.1@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63
     container_name: spotify-skill-VALKEY
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
