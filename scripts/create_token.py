@@ -1,3 +1,5 @@
+"""Script to create Spotify OAuth token for testing."""
+
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 

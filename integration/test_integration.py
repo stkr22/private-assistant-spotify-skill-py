@@ -286,6 +286,7 @@ def create_intent_request_payload(
 
     Returns:
         JSON string of the IntentRequest.
+
     """
     if entities is None:
         entities = {}
@@ -367,12 +368,12 @@ def decode_mqtt_payload(payload: str | bytes | bytearray | int | float | None) -
 
 async def wait_for_response(
     mqtt_client: aiomqtt.Client,
-    timeout: float = 5.0,
+    timeout_seconds: float = 5.0,
 ) -> str:
     """Wait for and return the skill's response text."""
     await mqtt_client.subscribe(OUTPUT_TOPIC)
 
-    async with asyncio.timeout(timeout):
+    async with asyncio.timeout(timeout_seconds):
         async for message in mqtt_client.messages:
             payload_str = decode_mqtt_payload(message.payload)
             payload = json.loads(payload_str)
@@ -389,42 +390,8 @@ async def wait_for_response(
 # --- Test Classes ---
 
 
-class TestSystemHelpIntent:
-    """Test SYSTEM_HELP intent processing."""
-
-    async def test_help_response(
-        self,
-        running_skill,  # noqa: ARG002 - Required fixture for skill background task
-        mqtt_test_client: aiomqtt.Client,
-    ) -> None:
-        """Test that help intent returns help information."""
-        # Subscribe first, then publish
-        await mqtt_test_client.subscribe(OUTPUT_TOPIC)
-
-        await publish_intent_request(
-            mqtt_test_client,
-            IntentType.SYSTEM_HELP,
-            "living_room",
-            "spotify help",
-        )
-
-        # Wait for response
-        async with asyncio.timeout(10):
-            async for message in mqtt_test_client.messages:
-                payload = json.loads(decode_mqtt_payload(message.payload))
-                response_text = payload.get("text", payload.get("response", ""))
-
-                # Verify help text is returned
-                assert response_text, "Expected non-empty help response"
-                # Help text should contain spotify-related information
-                assert any(keyword in response_text.lower() for keyword in ["spotify", "play", "music", "playlist"]), (
-                    f"Expected help text to contain spotify keywords, got: {response_text}"
-                )
-                break
-
-
 class TestQueryListIntent:
-    """Test QUERY_LIST intent for playlists and devices."""
+    """Test MEDIA_QUERY intent for playlists and devices."""
 
     async def test_query_playlists(
         self,
@@ -437,7 +404,7 @@ class TestQueryListIntent:
         # No entities needed - skill determines playlist vs device from raw_text
         await publish_intent_request(
             mqtt_test_client,
-            IntentType.QUERY_LIST,
+            IntentType.MEDIA_QUERY,
             "living_room",
             "list spotify playlists",
         )
@@ -466,7 +433,7 @@ class TestQueryListIntent:
         # No entities needed - skill determines playlist vs device from raw_text
         await publish_intent_request(
             mqtt_test_client,
-            IntentType.QUERY_LIST,
+            IntentType.MEDIA_QUERY,
             "living_room",
             "list spotify devices",
         )

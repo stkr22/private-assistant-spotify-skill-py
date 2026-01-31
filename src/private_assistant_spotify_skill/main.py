@@ -28,6 +28,7 @@ def main(config_path: Annotated[pathlib.Path, typer.Argument(envvar="PRIVATE_ASS
 
     Args:
         config_path: Path to YAML configuration file or from PRIVATE_ASSISTANT_CONFIG_PATH env var.
+
     """
     asyncio.run(start_skill(config_path))
 
@@ -40,6 +41,7 @@ async def start_skill(config_path: pathlib.Path) -> None:
 
     Args:
         config_path: Path to the YAML configuration file.
+
     """
     logger = skill_logger.SkillLogger.get_logger("Private Assistant SpotifySkill")
 

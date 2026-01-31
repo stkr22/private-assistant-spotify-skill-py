@@ -221,9 +221,9 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             mock_to_thread.assert_called_with(self.mock_spotify.next_track)
 
     async def test_process_request_query_list_playlists(self) -> None:
-        """Test QUERY_LIST intent for playlists."""
+        """Test MEDIA_QUERY intent for playlists."""
         intent_request = create_mock_intent_request(
-            intent_type=IntentType.QUERY_LIST,
+            intent_type=IntentType.MEDIA_QUERY,
             room="living_room",
             raw_text="list spotify playlists",
         )
@@ -248,9 +248,9 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             self.assertIn("playlist", response_text.lower())
 
     async def test_process_request_query_list_devices(self) -> None:
-        """Test QUERY_LIST intent for devices."""
+        """Test MEDIA_QUERY intent for devices."""
         intent_request = create_mock_intent_request(
-            intent_type=IntentType.QUERY_LIST,
+            intent_type=IntentType.MEDIA_QUERY,
             room="living_room",
             entities={"device": ["speaker"]},
             raw_text="list spotify devices",
@@ -268,23 +268,6 @@ class TestSpotifySkill(unittest.IsolatedAsyncioTestCase):
             call_args = mock_send_response.call_args
             response_text = call_args[0][0]
             self.assertIn("device", response_text.lower())
-
-    async def test_process_request_system_help(self) -> None:
-        """Test SYSTEM_HELP intent processing."""
-        intent_request = create_mock_intent_request(
-            intent_type=IntentType.SYSTEM_HELP,
-            room="living_room",
-            raw_text="spotify help",
-        )
-
-        with (
-            patch.object(self.skill, "_get_spotify_devices", return_value=self.mock_devices),
-            patch.object(self.skill, "send_response", new_callable=AsyncMock) as mock_send_response,
-        ):
-            await self.skill.process_request(intent_request)
-
-            # Verify send_response was called with help info
-            mock_send_response.assert_called_once()
 
     async def test_get_main_device_found(self) -> None:
         """Test _get_main_device returns correct device."""

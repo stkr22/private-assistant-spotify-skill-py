@@ -62,7 +62,7 @@ class TestRedisSettings:
         settings = ValkeySettings()
 
         assert settings.host == "redis-server"
-        assert settings.port == 6380  # noqa: PLR2004
+        assert settings.port == 6380
         assert settings.password == "secret"
         assert settings.db == 1
 
@@ -77,7 +77,7 @@ class TestRedisSettings:
         settings = ValkeySettings()
 
         assert settings.host == "localhost"
-        assert settings.port == 6379  # noqa: PLR2004
+        assert settings.port == 6379
         assert settings.username is None
         assert settings.password is None
         assert settings.db == 0
@@ -93,7 +93,7 @@ class TestRedisSettings:
         settings = ValkeySettings()
 
         assert settings.host == "redis-server"
-        assert settings.port == 6380  # noqa: PLR2004
+        assert settings.port == 6380
         assert settings.username == "default"
         assert settings.password == "secret"
-        assert settings.db == 2  # noqa: PLR2004
+        assert settings.db == 2
